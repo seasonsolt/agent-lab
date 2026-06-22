@@ -202,6 +202,37 @@ def test_compare_command_exports_artifacts_for_external_repo(tmp_path, monkeypat
     assert payload["verdict"] == "useful"
 
 
+def test_compare_command_reports_external_repo_validation_error(tmp_path, monkeypatch, capsys):
+    baseline = tmp_path / "baseline"
+    task_pack = tmp_path / "task-pack"
+    baseline.mkdir()
+    task_pack.mkdir()
+    (baseline / "SKILL.md").write_text("# Baseline\n", encoding="utf-8")
+    (task_pack / "taskpack.yaml").write_text("id: demo\n", encoding="utf-8")
+
+    def fake_clone_external_skill_repo(repo_url, skill_path, clone_root):
+        raise ValueError("External skill path 'skills/missing' does not contain SKILL.md")
+
+    monkeypatch.setattr("skill_lab.cli.clone_external_skill_repo", fake_clone_external_skill_repo)
+    args = argparse.Namespace(
+        baseline=str(baseline),
+        treatment=None,
+        treatment_repo="https://github.com/seasonsolt/ddia-skill",
+        treatment_skill_path="skills/missing",
+        task_pack=str(task_pack),
+        api_url="http://localhost:8000",
+        runs=1,
+        network=False,
+        timeout_seconds=300,
+        output_dir=None,
+    )
+
+    assert compare_command(args) == 2
+    stderr = capsys.readouterr().err
+    assert "External skill path 'skills/missing' does not contain SKILL.md" in stderr
+    assert "Eval comparison failed" not in stderr
+
+
 def test_summarize_comparison_reports_lift_and_verdict():
     baseline = [
         {

@@ -110,7 +110,10 @@ def compare_command(args: argparse.Namespace) -> int:
                 treatment_skill_path=str(treatment_path),
             )
             _write_artifacts_if_requested(args, summary, metadata)
-    except (HTTPError, URLError, TimeoutError, subprocess.CalledProcessError, ValueError) as exc:
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    except (HTTPError, URLError, TimeoutError, subprocess.CalledProcessError) as exc:
         print(f"Eval comparison failed: {exc}", file=sys.stderr)
         return 1
 
