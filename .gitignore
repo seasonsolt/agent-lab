@@ -7,5 +7,6 @@ __pycache__/
 .pytest_cache/
 
 agent/workspace/
+.agent-lab/
 runs/
 .DS_Store
