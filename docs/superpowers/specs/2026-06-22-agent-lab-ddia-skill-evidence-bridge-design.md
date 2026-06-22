@@ -1,0 +1,222 @@
+# Agent Lab And DDIA Skill Evidence Bridge Design
+
+## Goal
+
+Strengthen the relationship between `seasonsolt/agent-lab` and
+`seasonsolt/ddia-skill` by making Agent Lab the external evaluator for DDIA
+Skill, and by letting DDIA Skill cite Agent Lab's repeatable comparison results
+as evidence.
+
+The first phase should prove two claims:
+
+1. Agent Lab can call and evaluate skills from external GitHub skill
+   repositories, not only local folders.
+2. DDIA Skill can reference external Agent Lab evidence instead of relying only
+   on self-contained benchmark notes.
+
+## Confirmed Scope
+
+- Add host-side Agent Lab CLI support for evaluating a treatment skill from a
+  GitHub repository.
+- Preserve the current local baseline skill and local task-pack flow.
+- Export comparison artifacts as both JSON and Markdown.
+- Include repo URL, commit SHA, reproduction command, run IDs, score lift,
+  pass-rate delta, timeout/error rate, and verdict in the exported evidence.
+- Add DDIA Skill evidence docs and latest artifacts under
+  `evaluation/agent-lab/`.
+- Add a short DDIA Skill README link to the external Agent Lab evaluation.
+
+## Out Of Scope
+
+- Web UI.
+- Public leaderboard.
+- GitHub Actions model evaluation.
+- Statistical significance claims.
+- Multi-model benchmark orchestration.
+- Marketplace-style skill ingestion.
+
+## Agent Lab CLI Design
+
+Agent Lab should extend the existing `skill-lab compare` command with optional
+external treatment repo inputs:
+
+```bash
+python3 -m skill_lab.cli compare \
+  --baseline ./skills/example-coding-skill \
+  --treatment-repo https://github.com/seasonsolt/ddia-skill \
+  --treatment-skill-path skills/ddia-system-design \
+  --task-pack ./task_packs/ddia-coding-real \
+  --api-url http://localhost:8000 \
+  --runs 3 \
+  --network \
+  --timeout-seconds 300 \
+  --output-dir ./evaluation-results/ddia-skill
+```
+
+The command should continue to support the existing local treatment form:
+
+```bash
+python3 -m skill_lab.cli compare \
+  --baseline ./skills/example-coding-skill \
+  --treatment ./skills/ddia-system-design \
+  --task-pack ./task_packs/ddia-coding-real
+```
+
+`--treatment` and `--treatment-repo` are mutually exclusive. When
+`--treatment-repo` is used, `--treatment-skill-path` is required.
+
+## External Repo Ingestion
+
+The CLI should clone the treatment repo into a temporary directory, resolve the
+requested skill path, and pass that resolved local path into the existing
+comparison flow.
+
+The first phase should support public HTTPS GitHub URLs. Private repo support,
+branch selection, shallow clone caching, and marketplace registry support can
+come later.
+
+The exported evidence should record:
+
+- treatment repo URL
+- treatment repo commit SHA
+- treatment skill path inside the repo
+- baseline skill path
+- task pack path
+- number of runs
+- reproduction command
+
+If the external skill path has no `manifest.yaml`, the first phase may create a
+temporary manifest in the cloned directory using the skill directory name and
+`SKILL.md` entry. The generated manifest must not be committed back to the
+external repo.
+
+## Evidence Artifacts
+
+When `--output-dir` is supplied, the CLI should write:
+
+```text
+comparison.json
+comparison.md
+```
+
+`comparison.json` should include the existing summary payload plus an
+`evidence` object:
+
+```json
+{
+  "evidence": {
+    "evaluator": "seasonsolt/agent-lab",
+    "treatment_repo_url": "https://github.com/seasonsolt/ddia-skill",
+    "treatment_repo_commit": "0123456789abcdef0123456789abcdef01234567",
+    "treatment_skill_path": "skills/ddia-system-design",
+    "baseline_skill_path": "./skills/example-coding-skill",
+    "task_pack_path": "./task_packs/ddia-coding-real",
+    "reproduction_command": "python3 -m skill_lab.cli compare --baseline ./skills/example-coding-skill --treatment-repo https://github.com/seasonsolt/ddia-skill --treatment-skill-path skills/ddia-system-design --task-pack ./task_packs/ddia-coding-real --runs 3 --output-dir ./evaluation-results/ddia-skill"
+  }
+}
+```
+
+`comparison.md` should be readable evidence that can be copied into
+`ddia-skill/evaluation/agent-lab/latest-comparison.md`. It should include:
+
+- title and timestamp
+- evaluator repo
+- treatment repo and commit
+- baseline skill
+- treatment skill
+- task pack
+- run count
+- mean baseline score
+- mean treatment score
+- score lift
+- pass-rate delta
+- error rate
+- timeout rate
+- verdict
+- run IDs
+- reproduction command
+- limitations
+
+The Markdown should avoid overstating the result. It should say the evidence is
+a repeated Agent Lab comparison, not statistical proof.
+
+## DDIA Skill Integration
+
+DDIA Skill should add:
+
+```text
+evaluation/agent-lab/
+  README.md
+  latest-comparison.json
+  latest-comparison.md
+```
+
+`evaluation/agent-lab/README.md` should explain:
+
+- Agent Lab is an external skill evaluation harness.
+- The DDIA Skill evidence is generated by Agent Lab, not by DDIA Skill's own
+  benchmark scripts.
+- The result is evidence for data-systems coding tasks, not a universal proof
+  of skill quality.
+- Repeated runs are expected because model output variance matters.
+
+The DDIA Skill root README should add a short section:
+
+```markdown
+## External Agent Lab Evaluation
+
+This skill is also evaluated by seasonsolt/agent-lab, an external skill
+evaluation harness that runs repeated baseline/treatment comparisons in isolated
+coding-agent sandboxes.
+
+Latest result: see evaluation/agent-lab/latest-comparison.md
+```
+
+## Data Flow
+
+```text
+Agent Lab CLI
+  -> clone seasonsolt/ddia-skill
+  -> resolve skills/ddia-system-design
+  -> run baseline/treatment comparison through Eval API
+  -> export comparison.json and comparison.md
+  -> DDIA Skill copies the exported artifacts
+  -> DDIA Skill README links to latest-comparison.md
+```
+
+## Verdict Semantics
+
+The first phase should keep the current comparison verdict semantics:
+
+- `useful`: treatment improves mean final score by at least 10 points, improves
+  mean auto score by at least 10 points, and does not increase timeout rate.
+- `weak`: treatment improves score but not enough for a strong verdict.
+- `harmful`: treatment regresses score or materially increases timeout rate.
+- `inconclusive`: no clear lift.
+
+These verdicts should be presented as benchmark evidence, not absolute truth.
+
+## Testing Strategy
+
+Agent Lab tests:
+
+- CLI parser accepts `--treatment-repo`, `--treatment-skill-path`, and
+  `--output-dir`.
+- `--treatment` and `--treatment-repo` are mutually exclusive.
+- Comparison export writes JSON and Markdown files with repo URL, commit SHA,
+  run IDs, verdict, and reproduction command.
+- External repo cloning logic is unit-tested with a local git repository, not a
+  network GitHub dependency.
+
+DDIA Skill tests:
+
+- `evaluation/agent-lab/README.md` exists.
+- `evaluation/agent-lab/latest-comparison.json` contains required fields.
+- `evaluation/agent-lab/latest-comparison.md` exists.
+- root README links to `evaluation/agent-lab/latest-comparison.md`.
+
+## Open Operational Notes
+
+The first implementation can require a running Agent Lab stack and a configured
+model provider. It does not need to solve model-key management or CI secret
+injection. Those belong to a later CI-focused phase.
