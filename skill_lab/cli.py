@@ -68,6 +68,10 @@ def run_command(args: argparse.Namespace) -> int:
 
 
 def compare_command(args: argparse.Namespace) -> int:
+    if args.treatment_repo:
+        print("--treatment-repo compare is not implemented yet", file=sys.stderr)
+        return 2
+
     baseline_path = Path(args.baseline).resolve()
     treatment_path = Path(args.treatment).resolve()
     task_pack_path = Path(args.task_pack).resolve()

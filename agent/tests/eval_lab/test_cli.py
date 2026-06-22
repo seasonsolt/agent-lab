@@ -5,7 +5,7 @@ import pytest
 
 sys.path.append("/lab")
 
-from skill_lab.cli import build_parser
+from skill_lab.cli import build_parser, compare_command
 from skill_lab.comparison import summarize_comparison
 
 
@@ -92,6 +92,26 @@ def test_cli_parser_rejects_local_and_external_treatment_together():
                 "./task_packs/ddia-coding-real",
             ]
         )
+
+
+def test_compare_command_rejects_external_treatment_repo_without_crashing(capsys):
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "compare",
+            "--baseline",
+            "./skills/example-coding-skill",
+            "--treatment-repo",
+            "https://github.com/seasonsolt/ddia-skill",
+            "--treatment-skill-path",
+            "skills/ddia-system-design",
+            "--task-pack",
+            "./task_packs/ddia-coding-real",
+        ]
+    )
+
+    assert compare_command(args) == 2
+    assert "--treatment-repo compare is not implemented yet" in capsys.readouterr().err
 
 
 def test_summarize_comparison_reports_lift_and_verdict():
