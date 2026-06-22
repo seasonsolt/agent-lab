@@ -84,6 +84,30 @@ python3 -m skill_lab.cli compare \
 
 The comparison output includes mean scores, score lift, pass-rate delta, error rate, timeout rate, run IDs, and a verdict.
 
+Compare a skill directly from a GitHub repository and export evidence artifacts:
+
+When `--treatment-repo` is used, Agent Lab clones the repository under the
+local `.agent-lab/external-skills/` workspace. That directory is ignored by git
+and keeps the cloned skill inside the Eval API project-root boundary.
+
+```bash
+python3 -m skill_lab.cli compare \
+  --baseline ./skills/example-coding-skill \
+  --treatment-repo https://github.com/seasonsolt/ddia-skill \
+  --treatment-skill-path skills/ddia-system-design \
+  --task-pack ./task_packs/ddia-coding-real \
+  --api-url http://localhost:8000 \
+  --runs 3 \
+  --network \
+  --timeout-seconds 300 \
+  --output-dir ./evaluation-results/ddia-skill
+```
+
+The output directory contains:
+
+- `comparison.json`: machine-readable comparison evidence.
+- `comparison.md`: human-readable evidence suitable for linking from the evaluated skill repository.
+
 Eval API:
 
 - `POST /eval-runs`
