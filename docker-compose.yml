@@ -166,6 +166,7 @@ services:
     volumes:
       - ./agent/workspace:/workspace
       - ${EVAL_LAB_HOST_PROJECT_DIR:-${PWD}}:${EVAL_LAB_CONTAINER_PROJECT_DIR:-/lab}:ro
+      - ${EVAL_LAB_HOST_PROJECT_DIR:-${PWD}}:${EVAL_LAB_HOST_PROJECT_DIR:-${PWD}}:ro
       - ${EVAL_LAB_HOST_RUNS_DIR:-/tmp/agent-lab-runs}:${EVAL_LAB_CONTAINER_RUNS_DIR:-/runs}
     ports:
       - "127.0.0.1:8000:8000"
