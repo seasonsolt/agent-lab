@@ -12,7 +12,7 @@ class EvidenceMetadata:
     evaluator: str
     treatment_repo_url: str | None
     treatment_repo_commit: str | None
-    treatment_skill_path: str | None
+    treatment_skill_path: str
     baseline_skill_path: str
     task_pack_path: str
     reproduction_command: str
@@ -43,8 +43,8 @@ def render_comparison_markdown(payload: dict[str, Any]) -> str:
         "",
         f"- Generated at: `{generated_at}`",
         f"- Evaluator: `{evidence['evaluator']}`",
-        f"- Treatment repo: `{evidence['treatment_repo_url']}`",
-        f"- Treatment commit: `{evidence['treatment_repo_commit']}`",
+        f"- Treatment repo: `{_format_optional(evidence['treatment_repo_url'])}`",
+        f"- Treatment commit: `{_format_optional(evidence['treatment_repo_commit'])}`",
         f"- Treatment skill path: `{evidence['treatment_skill_path']}`",
         f"- Baseline skill path: `{evidence['baseline_skill_path']}`",
         f"- Task pack path: `{evidence['task_pack_path']}`",
@@ -77,3 +77,7 @@ def render_comparison_markdown(payload: dict[str, Any]) -> str:
         "",
     ]
     return "\n".join(lines)
+
+
+def _format_optional(value: str | None) -> str:
+    return value if value is not None else "not applicable"

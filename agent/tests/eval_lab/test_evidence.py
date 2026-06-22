@@ -64,3 +64,23 @@ def test_write_comparison_artifacts_writes_json_and_markdown(tmp_path):
     assert "run-t2" in markdown
     assert "python3 -m skill_lab.cli compare" in markdown
     assert "not statistical proof" in markdown
+
+
+def test_write_comparison_artifacts_formats_missing_treatment_repo_metadata(tmp_path):
+    metadata = EvidenceMetadata(
+        evaluator="seasonsolt/agent-lab",
+        treatment_repo_url=None,
+        treatment_repo_commit=None,
+        treatment_skill_path="./skills/ddia-system-design",
+        baseline_skill_path="./skills/example-coding-skill",
+        task_pack_path="./task_packs/ddia-coding-real",
+        reproduction_command="python3 -m skill_lab.cli compare --treatment ./skills/ddia-system-design",
+    )
+
+    _, markdown_path = write_comparison_artifacts(sample_summary(), metadata, tmp_path)
+
+    markdown = markdown_path.read_text(encoding="utf-8")
+
+    assert "not applicable" in markdown
+    assert "`None`" not in markdown
+    assert "./skills/ddia-system-design" in markdown
