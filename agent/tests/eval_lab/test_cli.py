@@ -1,3 +1,5 @@
+import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -94,24 +96,110 @@ def test_cli_parser_rejects_local_and_external_treatment_together():
         )
 
 
-def test_compare_command_rejects_external_treatment_repo_without_crashing(capsys):
-    parser = build_parser()
-    args = parser.parse_args(
-        [
-            "compare",
-            "--baseline",
-            "./skills/example-coding-skill",
-            "--treatment-repo",
-            "https://github.com/seasonsolt/ddia-skill",
-            "--treatment-skill-path",
-            "skills/ddia-system-design",
-            "--task-pack",
-            "./task_packs/ddia-coding-real",
-        ]
+def test_compare_command_requires_skill_path_for_external_treatment_repo(tmp_path, capsys):
+    baseline = tmp_path / "baseline"
+    task_pack = tmp_path / "task-pack"
+    baseline.mkdir()
+    task_pack.mkdir()
+    (baseline / "SKILL.md").write_text("# Baseline\n", encoding="utf-8")
+    (task_pack / "taskpack.yaml").write_text("id: demo\n", encoding="utf-8")
+    args = argparse.Namespace(
+        baseline=str(baseline),
+        treatment=None,
+        treatment_repo="https://github.com/seasonsolt/ddia-skill",
+        treatment_skill_path=None,
+        task_pack=str(task_pack),
+        api_url="http://localhost:8000",
+        runs=1,
+        network=False,
+        timeout_seconds=300,
+        output_dir=None,
     )
 
     assert compare_command(args) == 2
-    assert "--treatment-repo compare is not implemented yet" in capsys.readouterr().err
+    assert "--treatment-skill-path is required when --treatment-repo is used" in capsys.readouterr().err
+
+
+def test_compare_command_exports_artifacts_for_external_repo(tmp_path, monkeypatch):
+    baseline = tmp_path / "baseline"
+    task_pack = tmp_path / "task-pack"
+    external_skill = tmp_path / "external" / "skills" / "ddia-system-design"
+    output_dir = tmp_path / "evidence"
+    baseline.mkdir()
+    task_pack.mkdir()
+    external_skill.mkdir(parents=True)
+    (baseline / "SKILL.md").write_text("# Baseline\n", encoding="utf-8")
+    (task_pack / "taskpack.yaml").write_text("id: demo\n", encoding="utf-8")
+    (external_skill / "SKILL.md").write_text("# DDIA\n", encoding="utf-8")
+    (external_skill / "manifest.yaml").write_text(
+        "id: ddia-system-design\nname: DDIA System Design\nentry: SKILL.md\n",
+        encoding="utf-8",
+    )
+
+    class FakeExternalRepo:
+        repo_url = "https://github.com/seasonsolt/ddia-skill"
+        skill_path = "skills/ddia-system-design"
+        skill_dir = external_skill
+        commit = "0123456789abcdef0123456789abcdef01234567"
+
+    class FakeClone:
+        def __enter__(self):
+            return FakeExternalRepo()
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+    def fake_clone_external_skill_repo(repo_url, skill_path, clone_root):
+        assert repo_url == "https://github.com/seasonsolt/ddia-skill"
+        assert skill_path == "skills/ddia-system-design"
+        assert clone_root.name == "external-skills"
+        return FakeClone()
+
+    reports = iter(
+        [
+            {
+                "eval_run_id": "run-b1",
+                "status": "failed",
+                "auto_score": 30,
+                "final_score": 20,
+                "pass_rate": 0,
+                "scores": [{"details": {"sandbox_status": "failed"}}],
+            },
+            {
+                "eval_run_id": "run-t1",
+                "status": "passed",
+                "auto_score": 80,
+                "final_score": 60,
+                "pass_rate": 1,
+                "scores": [{"details": {"sandbox_status": "passed"}}],
+            },
+        ]
+    )
+
+    monkeypatch.setattr("skill_lab.cli.clone_external_skill_repo", fake_clone_external_skill_repo)
+    monkeypatch.setattr("skill_lab.cli._run_eval_report", lambda args, skill_path, task_pack_path: next(reports))
+
+    args = argparse.Namespace(
+        baseline=str(baseline),
+        treatment=None,
+        treatment_repo="https://github.com/seasonsolt/ddia-skill",
+        treatment_skill_path="skills/ddia-system-design",
+        task_pack=str(task_pack),
+        api_url="http://localhost:8000",
+        runs=1,
+        network=False,
+        timeout_seconds=300,
+        output_dir=str(output_dir),
+    )
+
+    assert compare_command(args) == 0
+    assert (output_dir / "comparison.json").exists()
+    assert (output_dir / "comparison.md").exists()
+    payload = json.loads((output_dir / "comparison.json").read_text(encoding="utf-8"))
+    assert payload["evidence"]["treatment_repo_url"] == "https://github.com/seasonsolt/ddia-skill"
+    assert payload["evidence"]["treatment_repo_commit"] == "0123456789abcdef0123456789abcdef01234567"
+    assert payload["evidence"]["treatment_skill_path"] == "skills/ddia-system-design"
+    assert payload["verdict"] == "useful"
 
 
 def test_summarize_comparison_reports_lift_and_verdict():
