@@ -1,0 +1,11 @@
+id: coding-basic
+name: Coding Basic
+domain: coding
+tasks:
+  - id: fix-bug-001
+    type: coding
+    prompt: Read README.md and update it so it contains the exact phrase "skill evaluation complete".
+    fixture: tasks/fix-bug-001/fixture
+    expected: tasks/fix-bug-001/expected
+    scorer: tasks/fix-bug-001/scorer.py
+    max_score: 100

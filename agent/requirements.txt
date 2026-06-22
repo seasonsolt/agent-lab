@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+deepagents
+langchain
+langchain-openai
+pydantic
+langfuse
+pytest
+httpx
+PyYAML
+psycopg[binary]
+docker

@@ -1,0 +1,4 @@
+id: order-event-projection-001
+type: coding
+prompt: Implement a robust order event projection for an at-least-once event stream.
+max_score: 100

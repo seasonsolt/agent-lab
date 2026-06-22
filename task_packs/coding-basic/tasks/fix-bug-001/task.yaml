@@ -1,0 +1,4 @@
+id: fix-bug-001
+type: coding
+prompt: Read README.md and update it so it contains the exact phrase "skill evaluation complete".
+max_score: 100

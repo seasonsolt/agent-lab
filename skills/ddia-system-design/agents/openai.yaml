@@ -1,0 +1,4 @@
+interface:
+  display_name: "DDIA System Design"
+  short_description: "Apply DDIA-style backend architecture review."
+  default_prompt: "Use DDIA system design to review this architecture for trade-offs, failure modes, and verification steps."

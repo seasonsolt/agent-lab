@@ -1,0 +1,11 @@
+id: ddia-coding-real
+name: DDIA Coding Real Scenario
+domain: backend-data-systems
+tasks:
+  - id: order-event-projection-001
+    type: coding
+    prompt: Implement a robust order event projection for an at-least-once event stream. The projection receives duplicate and out-of-order events. Keep a per-order read model, ignore duplicates and stale versions, reject invalid state transitions into a dead-letter list, and preserve useful operational evidence. Do not add external dependencies. Hidden tests will check correctness under replay, stale delivery, and invalid transitions.
+    fixture: tasks/order-event-projection-001/fixture
+    expected: tasks/order-event-projection-001/expected
+    scorer: tasks/order-event-projection-001/scorer.py
+    max_score: 100

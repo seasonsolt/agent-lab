@@ -1,0 +1,6 @@
+id: example-coding-skill
+name: Example Coding Skill
+entry: SKILL.md
+tags:
+  - coding
+  - smoke-test
