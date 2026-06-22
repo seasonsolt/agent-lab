@@ -1,6 +1,8 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.append("/lab")
 
 from skill_lab.cli import build_parser
@@ -40,6 +42,56 @@ def test_cli_parser_accepts_compare_command():
     assert args.treatment == "./skills/ddia"
     assert args.task_pack == "./task_packs/ddia"
     assert args.runs == 3
+
+
+def test_cli_parser_accepts_external_treatment_repo_compare_command():
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "compare",
+            "--baseline",
+            "./skills/example-coding-skill",
+            "--treatment-repo",
+            "https://github.com/seasonsolt/ddia-skill",
+            "--treatment-skill-path",
+            "skills/ddia-system-design",
+            "--task-pack",
+            "./task_packs/ddia-coding-real",
+            "--output-dir",
+            "./evaluation-results/ddia-skill",
+            "--runs",
+            "3",
+        ]
+    )
+
+    assert args.command == "compare"
+    assert args.baseline == "./skills/example-coding-skill"
+    assert args.treatment_repo == "https://github.com/seasonsolt/ddia-skill"
+    assert args.treatment_skill_path == "skills/ddia-system-design"
+    assert args.treatment is None
+    assert args.output_dir == "./evaluation-results/ddia-skill"
+    assert args.runs == 3
+
+
+def test_cli_parser_rejects_local_and_external_treatment_together():
+    parser = build_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "compare",
+                "--baseline",
+                "./skills/example-coding-skill",
+                "--treatment",
+                "./skills/ddia-system-design",
+                "--treatment-repo",
+                "https://github.com/seasonsolt/ddia-skill",
+                "--treatment-skill-path",
+                "skills/ddia-system-design",
+                "--task-pack",
+                "./task_packs/ddia-coding-real",
+            ]
+        )
 
 
 def test_summarize_comparison_reports_lift_and_verdict():

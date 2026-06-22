@@ -21,12 +21,16 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--timeout-seconds", type=int, default=None)
     compare = subcommands.add_parser("compare")
     compare.add_argument("--baseline", required=True)
-    compare.add_argument("--treatment", required=True)
+    treatment = compare.add_mutually_exclusive_group(required=True)
+    treatment.add_argument("--treatment")
+    treatment.add_argument("--treatment-repo")
+    compare.add_argument("--treatment-skill-path")
     compare.add_argument("--task-pack", required=True)
     compare.add_argument("--api-url", default="http://localhost:8000")
     compare.add_argument("--runs", type=int, default=3)
     compare.add_argument("--network", action="store_true")
     compare.add_argument("--timeout-seconds", type=int, default=None)
+    compare.add_argument("--output-dir")
     return parser
 
 
