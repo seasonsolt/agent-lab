@@ -9,6 +9,9 @@ from pydantic import BaseModel, Field, model_validator
 RunStatus = Literal["queued", "running", "passed", "failed", "error"]
 ScoreType = Literal["auto", "rubric", "llm_judge", "human"]
 Verdict = Literal["useful", "weak", "harmful", "inconclusive"]
+WorkflowNodeType = Literal["tool", "expert_lens", "aggregate", "coding_agent", "scorer", "judge"]
+WorkflowFailurePolicy = Literal["fail_workflow", "continue_with_artifact", "skip_dependents"]
+WorkflowNodeStatus = Literal["queued", "running", "passed", "failed", "skipped"]
 
 
 class SkillManifest(BaseModel):
@@ -37,6 +40,37 @@ class TaskPackManifest(BaseModel):
     name: str = Field(min_length=1)
     domain: str = Field(min_length=1)
     tasks: list[TaskSpec] = Field(min_length=1)
+
+
+class WorkflowNodeSpec(BaseModel):
+    id: str = Field(min_length=1)
+    type: WorkflowNodeType
+    needs: list[str] = Field(default_factory=list)
+    timeout_seconds: int = Field(gt=0)
+    on_failure: WorkflowFailurePolicy = "fail_workflow"
+    command: str | None = None
+    prompt: str | None = None
+    max_parallelism_key: str | None = None
+    inputs: list[str] = Field(default_factory=list)
+    outputs: list[str] = Field(default_factory=list)
+    knowledge_sources: list[str] = Field(default_factory=list)
+
+
+class WorkflowManifest(BaseModel):
+    id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    max_parallel_nodes: int = Field(default=4, gt=0)
+    nodes: list[WorkflowNodeSpec] = Field(min_length=1)
+
+
+class WorkflowNodeRecord(BaseModel):
+    node_id: str
+    node_type: WorkflowNodeType
+    status: WorkflowNodeStatus
+    duration_ms: int = Field(ge=0)
+    artifact_paths: list[str] = Field(default_factory=list)
+    trace_ids: list[str] = Field(default_factory=list)
+    error: str | None = None
 
 
 class EvalRunCreateRequest(BaseModel):
