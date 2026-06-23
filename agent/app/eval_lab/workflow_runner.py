@@ -327,9 +327,12 @@ class WorkflowRunner:
             prompt_parts.append(node.prompt)
         for dependency in node.needs:
             upstream = node_by_id[dependency]
-            artifact = artifacts_dir / _artifact_name(upstream)
+            artifact_name = _artifact_name(upstream)
+            artifact = artifacts_dir / artifact_name
             if artifact.exists():
-                prompt_parts.append(f"Workflow artifact from {dependency}:\n{artifact.read_text(encoding='utf-8')}")
+                prompt_parts.append(
+                    f"Workflow artifact from {dependency} ({artifact_name}):\n{artifact.read_text(encoding='utf-8')}"
+                )
         return "\n\n".join(prompt_parts)
 
     def _write_text_artifact(self, artifacts_dir: Path, node: WorkflowNodeSpec, text: str) -> str:

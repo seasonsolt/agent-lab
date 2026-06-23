@@ -362,6 +362,7 @@ def test_workflow_runner_agent_prompt_uses_declared_dependency_output_name(tmp_p
     )
 
     assert result.status == "passed"
+    assert "Workflow artifact from scan (scan.json):" in sandbox.calls[0]["task_prompt"]
     assert sandbox.calls[0]["task_prompt"].count('"finding": true') == 1
 
 
