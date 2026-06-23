@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
+from threading import Lock
 from typing import Any
+
+import pytest
 
 from app.eval_lab.sandbox import SandboxRunResult
 from app.eval_lab.schemas import WorkflowManifest, WorkflowNodeSpec
@@ -42,6 +46,38 @@ class FakeSandbox:
             agent_output="fixed",
             changed_files=["fixed.txt"],
             trace_ids=["trace-agent"],
+        )
+
+
+class TimedSandbox(FakeSandbox):
+    def __init__(self) -> None:
+        super().__init__()
+        self.started: list[tuple[str, float]] = []
+        self._lock = Lock()
+
+    def run_task(
+        self,
+        run_id: str,
+        task_id: str,
+        task_prompt: str,
+        skill_host_dir: Path,
+        fixture_host_dir: Path,
+        workspace_host_dir: Path,
+        network_enabled: bool | None = None,
+        timeout_seconds: int | None = None,
+    ) -> SandboxRunResult:
+        with self._lock:
+            self.started.append((task_id, time.monotonic()))
+        time.sleep(0.2)
+        return super().run_task(
+            run_id=run_id,
+            task_id=task_id,
+            task_prompt=task_prompt,
+            skill_host_dir=skill_host_dir,
+            fixture_host_dir=fixture_host_dir,
+            workspace_host_dir=workspace_host_dir,
+            network_enabled=network_enabled,
+            timeout_seconds=timeout_seconds,
         )
 
 
@@ -187,3 +223,152 @@ def test_workflow_runner_fails_workflow_for_required_tool_failure(tmp_path):
 
     assert result.status == "failed"
     assert result.nodes[0].status == "failed"
+
+
+@pytest.mark.parametrize(
+    "unsafe_output",
+    [
+        "/tmp/scan.txt",
+        "../scan.txt",
+        "nested/scan.txt",
+        "nested\\scan.txt",
+    ],
+)
+def test_workflow_runner_rejects_unsafe_output_artifact_names(tmp_path, unsafe_output):
+    workspace = tmp_path / "workspace"
+    fixture = tmp_path / "fixture"
+    skill = tmp_path / "skill"
+    workspace.mkdir()
+    fixture.mkdir()
+    skill.mkdir()
+    manifest = WorkflowManifest(
+        id="unsafe-output",
+        name="Unsafe Output",
+        nodes=[
+            WorkflowNodeSpec(
+                id="scan",
+                type="tool",
+                needs=[],
+                timeout_seconds=5,
+                on_failure="fail_workflow",
+                command="python -c \"print('scan')\"",
+                outputs=[unsafe_output],
+            )
+        ],
+    )
+
+    result = WorkflowRunner(sandbox=FakeSandbox()).run(
+        manifest=manifest,
+        run_id="eval-1",
+        task_id="case-1",
+        task_prompt="Fix it.",
+        skill_host_dir=skill,
+        fixture_host_dir=fixture,
+        workspace_host_dir=workspace,
+        network_enabled=False,
+        timeout_seconds=60,
+    )
+
+    assert result.status == "failed"
+    assert result.nodes[0].status == "failed"
+    assert "Unsafe workflow artifact output name" in result.nodes[0].error
+    assert not (workspace / ".agent-lab" / "scan.txt").exists()
+    assert not (workspace / ".agent-lab" / "artifacts" / "nested").exists()
+
+
+def test_workflow_runner_agent_prompt_uses_declared_dependency_output_name(tmp_path):
+    workspace = tmp_path / "workspace"
+    fixture = tmp_path / "fixture"
+    skill = tmp_path / "skill"
+    workspace.mkdir()
+    fixture.mkdir()
+    skill.mkdir()
+    sandbox = FakeSandbox()
+    manifest = WorkflowManifest(
+        id="declared-output",
+        name="Declared Output",
+        nodes=[
+            WorkflowNodeSpec(
+                id="scan",
+                type="tool",
+                needs=[],
+                timeout_seconds=5,
+                on_failure="fail_workflow",
+                command="python -c \"print('{\\\"finding\\\": true}')\"",
+                outputs=["scan.json"],
+            ),
+            WorkflowNodeSpec(
+                id="agent_fix",
+                type="coding_agent",
+                needs=["scan"],
+                timeout_seconds=30,
+                on_failure="fail_workflow",
+                prompt="Use the JSON scan output.",
+            ),
+        ],
+    )
+
+    result = WorkflowRunner(sandbox=sandbox).run(
+        manifest=manifest,
+        run_id="eval-1",
+        task_id="case-1",
+        task_prompt="Fix it.",
+        skill_host_dir=skill,
+        fixture_host_dir=fixture,
+        workspace_host_dir=workspace,
+        network_enabled=False,
+        timeout_seconds=60,
+    )
+
+    assert result.status == "passed"
+    assert sandbox.calls[0]["task_prompt"].count('"finding": true') == 1
+
+
+def test_workflow_runner_runs_ready_batch_in_parallel_with_deterministic_records(tmp_path):
+    workspace = tmp_path / "workspace"
+    fixture = tmp_path / "fixture"
+    skill = tmp_path / "skill"
+    workspace.mkdir()
+    fixture.mkdir()
+    skill.mkdir()
+    sandbox = TimedSandbox()
+    manifest = WorkflowManifest(
+        id="parallel-agents",
+        name="Parallel Agents",
+        max_parallel_nodes=2,
+        nodes=[
+            WorkflowNodeSpec(
+                id="agent_a",
+                type="coding_agent",
+                needs=[],
+                timeout_seconds=30,
+                on_failure="fail_workflow",
+                prompt="Fix A.",
+            ),
+            WorkflowNodeSpec(
+                id="agent_b",
+                type="coding_agent",
+                needs=[],
+                timeout_seconds=30,
+                on_failure="fail_workflow",
+                prompt="Fix B.",
+            ),
+        ],
+    )
+
+    result = WorkflowRunner(sandbox=sandbox).run(
+        manifest=manifest,
+        run_id="eval-1",
+        task_id="case-1",
+        task_prompt="Fix it.",
+        skill_host_dir=skill,
+        fixture_host_dir=fixture,
+        workspace_host_dir=workspace,
+        network_enabled=False,
+        timeout_seconds=60,
+    )
+
+    assert result.status == "passed"
+    assert [node.node_id for node in result.nodes] == ["agent_a", "agent_b"]
+    assert len(sandbox.started) == 2
+    assert abs(sandbox.started[0][1] - sandbox.started[1][1]) < 0.15

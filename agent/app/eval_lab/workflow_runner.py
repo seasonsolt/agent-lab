@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -63,37 +64,52 @@ class WorkflowRunner:
                 )
                 return WorkflowRunResult(status="failed", nodes=records, trace_ids=trace_ids, sandbox_result=sandbox_result)
 
-            for node in ready[: manifest.max_parallel_nodes]:
+            batch = ready[: manifest.max_parallel_nodes]
+            for node in batch:
                 remaining.remove(node)
+
+            runnable_nodes: list[WorkflowNodeSpec] = []
+            batch_results: dict[str, tuple[WorkflowNodeRecord, SandboxRunResult | None]] = {}
+            for node in batch:
                 if any(dependency in skipped for dependency in node.needs):
                     skipped.add(node.id)
-                    records.append(
+                    batch_results[node.id] = (
                         WorkflowNodeRecord(
                             node_id=node.id,
                             node_type=node.type,
                             status="skipped",
                             duration_ms=0,
                             error="Upstream dependency was skipped.",
-                        )
+                        ),
+                        None,
                     )
-                    continue
+                else:
+                    runnable_nodes.append(node)
 
-                started = time.monotonic()
-                record, node_sandbox_result = self._run_node(
-                    node=node,
-                    node_by_id=node_by_id,
-                    task_prompt=task_prompt,
-                    run_id=run_id,
-                    task_id=task_id,
-                    skill_host_dir=skill_host_dir,
-                    fixture_host_dir=fixture_host_dir,
-                    workspace_host_dir=workspace_host_dir,
-                    artifacts_dir=artifacts_dir,
-                    network_enabled=network_enabled,
-                    timeout_seconds=min(timeout_seconds, node.timeout_seconds),
-                )
-                duration_ms = int((time.monotonic() - started) * 1000)
-                record.duration_ms = duration_ms
+            with ThreadPoolExecutor(max_workers=manifest.max_parallel_nodes) as executor:
+                future_by_node = {
+                    executor.submit(
+                        self._run_node_with_duration,
+                        node=node,
+                        node_by_id=node_by_id,
+                        task_prompt=task_prompt,
+                        run_id=run_id,
+                        task_id=task_id,
+                        skill_host_dir=skill_host_dir,
+                        fixture_host_dir=fixture_host_dir,
+                        workspace_host_dir=workspace_host_dir,
+                        artifacts_dir=artifacts_dir,
+                        network_enabled=network_enabled,
+                        timeout_seconds=min(timeout_seconds, node.timeout_seconds),
+                    ): node
+                    for node in runnable_nodes
+                }
+                for future, node in future_by_node.items():
+                    batch_results[node.id] = future.result()
+
+            fail_workflow = False
+            for node in batch:
+                record, node_sandbox_result = batch_results[node.id]
                 records.append(record)
 
                 if node_sandbox_result is not None:
@@ -107,13 +123,15 @@ class WorkflowRunner:
                 else:
                     failed = True
                     completed.add(node.id)
-                    if node.on_failure == "fail_workflow":
-                        return WorkflowRunResult(
-                            status="failed",
-                            nodes=records,
-                            trace_ids=_dedupe(trace_ids),
-                            sandbox_result=sandbox_result,
-                        )
+                    fail_workflow = fail_workflow or node.on_failure == "fail_workflow"
+
+            if fail_workflow:
+                return WorkflowRunResult(
+                    status="failed",
+                    nodes=records,
+                    trace_ids=_dedupe(trace_ids),
+                    sandbox_result=sandbox_result,
+                )
 
         return WorkflowRunResult(
             status="failed" if failed else "passed",
@@ -121,6 +139,47 @@ class WorkflowRunner:
             trace_ids=_dedupe(trace_ids),
             sandbox_result=sandbox_result,
         )
+
+    def _run_node_with_duration(
+        self,
+        node: WorkflowNodeSpec,
+        node_by_id: dict[str, WorkflowNodeSpec],
+        task_prompt: str,
+        run_id: str,
+        task_id: str,
+        skill_host_dir: Path,
+        fixture_host_dir: Path,
+        workspace_host_dir: Path,
+        artifacts_dir: Path,
+        network_enabled: bool,
+        timeout_seconds: int,
+    ) -> tuple[WorkflowNodeRecord, SandboxRunResult | None]:
+        started = time.monotonic()
+        try:
+            record, sandbox_result = self._run_node(
+                node=node,
+                node_by_id=node_by_id,
+                task_prompt=task_prompt,
+                run_id=run_id,
+                task_id=task_id,
+                skill_host_dir=skill_host_dir,
+                fixture_host_dir=fixture_host_dir,
+                workspace_host_dir=workspace_host_dir,
+                artifacts_dir=artifacts_dir,
+                network_enabled=network_enabled,
+                timeout_seconds=timeout_seconds,
+            )
+        except ValueError as exc:
+            record = WorkflowNodeRecord(
+                node_id=node.id,
+                node_type=node.type,
+                status="failed",
+                duration_ms=0,
+                error=str(exc),
+            )
+            sandbox_result = None
+        record.duration_ms = int((time.monotonic() - started) * 1000)
+        return record, sandbox_result
 
     def _run_node(
         self,
@@ -144,7 +203,7 @@ class WorkflowRunner:
             sandbox_result = self.sandbox.run_task(
                 run_id=run_id,
                 task_id=f"{task_id}-{node.id}",
-                task_prompt=self._build_agent_prompt(node, task_prompt, artifacts_dir),
+                task_prompt=self._build_agent_prompt(node, node_by_id, task_prompt, artifacts_dir),
                 skill_host_dir=skill_host_dir,
                 fixture_host_dir=fixture_host_dir,
                 workspace_host_dir=workspace_host_dir,
@@ -215,7 +274,16 @@ class WorkflowRunner:
             )
 
         output = f"RETURN_CODE={completed.returncode}\nSTDOUT:\n{completed.stdout}\nSTDERR:\n{completed.stderr}\n"
-        artifact_path = self._write_text_artifact(artifacts_dir, node, output)
+        try:
+            artifact_path = self._write_text_artifact(artifacts_dir, node, output)
+        except ValueError as exc:
+            return WorkflowNodeRecord(
+                node_id=node.id,
+                node_type=node.type,
+                status="failed",
+                duration_ms=0,
+                error=str(exc),
+            )
         status = "passed" if completed.returncode == 0 or node.on_failure == "continue_with_artifact" else "failed"
         return WorkflowNodeRecord(
             node_id=node.id,
@@ -247,17 +315,21 @@ class WorkflowRunner:
             artifact_paths=[artifact_path],
         )
 
-    def _build_agent_prompt(self, node: WorkflowNodeSpec, task_prompt: str, artifacts_dir: Path) -> str:
+    def _build_agent_prompt(
+        self,
+        node: WorkflowNodeSpec,
+        node_by_id: dict[str, WorkflowNodeSpec],
+        task_prompt: str,
+        artifacts_dir: Path,
+    ) -> str:
         prompt_parts = [task_prompt]
         if node.prompt:
             prompt_parts.append(node.prompt)
         for dependency in node.needs:
-            artifact = artifacts_dir / f"{dependency}.md"
+            upstream = node_by_id[dependency]
+            artifact = artifacts_dir / _artifact_name(upstream)
             if artifact.exists():
                 prompt_parts.append(f"Workflow artifact from {dependency}:\n{artifact.read_text(encoding='utf-8')}")
-            txt_artifact = artifacts_dir / f"{dependency}.txt"
-            if txt_artifact.exists():
-                prompt_parts.append(f"Workflow artifact from {dependency}:\n{txt_artifact.read_text(encoding='utf-8')}")
         return "\n\n".join(prompt_parts)
 
     def _write_text_artifact(self, artifacts_dir: Path, node: WorkflowNodeSpec, text: str) -> str:
@@ -269,7 +341,18 @@ class WorkflowRunner:
 
 def _artifact_name(node: WorkflowNodeSpec) -> str:
     if node.outputs:
-        return node.outputs[0]
+        artifact_name = node.outputs[0]
+        artifact_path = Path(artifact_name)
+        if (
+            not artifact_name
+            or artifact_path.is_absolute()
+            or artifact_path.parts != (artifact_name,)
+            or "/" in artifact_name
+            or "\\" in artifact_name
+            or artifact_name in {".", ".."}
+        ):
+            raise ValueError(f"Unsafe workflow artifact output name for node '{node.id}': {artifact_name}")
+        return artifact_name
     suffix = "md" if node.type == "aggregate" else "txt"
     return f"{node.id}.{suffix}"
 
