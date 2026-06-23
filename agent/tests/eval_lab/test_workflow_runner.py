@@ -53,6 +53,8 @@ class TimedSandbox(FakeSandbox):
     def __init__(self) -> None:
         super().__init__()
         self.started: list[tuple[str, float]] = []
+        self.active = 0
+        self.max_observed_active = 0
         self._lock = Lock()
 
     def run_task(
@@ -67,18 +69,24 @@ class TimedSandbox(FakeSandbox):
         timeout_seconds: int | None = None,
     ) -> SandboxRunResult:
         with self._lock:
+            self.active += 1
+            self.max_observed_active = max(self.max_observed_active, self.active)
             self.started.append((task_id, time.monotonic()))
-        time.sleep(0.2)
-        return super().run_task(
-            run_id=run_id,
-            task_id=task_id,
-            task_prompt=task_prompt,
-            skill_host_dir=skill_host_dir,
-            fixture_host_dir=fixture_host_dir,
-            workspace_host_dir=workspace_host_dir,
-            network_enabled=network_enabled,
-            timeout_seconds=timeout_seconds,
-        )
+        try:
+            time.sleep(0.2)
+            return super().run_task(
+                run_id=run_id,
+                task_id=task_id,
+                task_prompt=task_prompt,
+                skill_host_dir=skill_host_dir,
+                fixture_host_dir=fixture_host_dir,
+                workspace_host_dir=workspace_host_dir,
+                network_enabled=network_enabled,
+                timeout_seconds=timeout_seconds,
+            )
+        finally:
+            with self._lock:
+                self.active -= 1
 
 
 def workflow_manifest() -> WorkflowManifest:
@@ -366,7 +374,7 @@ def test_workflow_runner_agent_prompt_uses_declared_dependency_output_name(tmp_p
     assert sandbox.calls[0]["task_prompt"].count('"finding": true') == 1
 
 
-def test_workflow_runner_runs_ready_batch_in_parallel_with_deterministic_records(tmp_path):
+def test_workflow_runner_limits_ready_batch_parallelism_with_deterministic_records(tmp_path):
     workspace = tmp_path / "workspace"
     fixture = tmp_path / "fixture"
     skill = tmp_path / "skill"
@@ -395,6 +403,14 @@ def test_workflow_runner_runs_ready_batch_in_parallel_with_deterministic_records
                 on_failure="fail_workflow",
                 prompt="Fix B.",
             ),
+            WorkflowNodeSpec(
+                id="agent_c",
+                type="coding_agent",
+                needs=[],
+                timeout_seconds=30,
+                on_failure="fail_workflow",
+                prompt="Fix C.",
+            ),
         ],
     )
 
@@ -411,6 +427,8 @@ def test_workflow_runner_runs_ready_batch_in_parallel_with_deterministic_records
     )
 
     assert result.status == "passed"
-    assert [node.node_id for node in result.nodes] == ["agent_a", "agent_b"]
-    assert len(sandbox.started) == 2
+    assert [node.node_id for node in result.nodes] == ["agent_a", "agent_b", "agent_c"]
+    assert len(sandbox.started) == 3
     assert abs(sandbox.started[0][1] - sandbox.started[1][1]) < 0.15
+    assert sandbox.max_observed_active > 1
+    assert sandbox.max_observed_active <= 2
