@@ -113,3 +113,28 @@ Eval API:
 - `POST /eval-runs`
 - `GET /eval-runs/{id}`
 - `GET /eval-runs/{id}/report`
+
+## Java Agent Workflow Bench
+
+Agent Lab can evaluate Java coding-agent workflows, not only direct skill
+prompts. The first Java benchmark pack covers one case per track:
+
+- `static-quality`: resource handling and null-safe behavior
+- `architecture`: DDIA-style idempotent event processing
+- `security-appsec`: SQL injection prevention
+
+Run a local comparison:
+
+```bash
+python3 -m skill_lab.cli compare \
+  --baseline ./skills/example-coding-skill \
+  --treatment ./skills/ddia-system-design \
+  --task-pack ./task_packs/java-skills-bench \
+  --api-url http://localhost:8000 \
+  --runs 1 \
+  --network \
+  --timeout-seconds 300
+```
+
+Each workflow task records node artifacts under the run workspace and includes
+workflow node status in the eval report.
