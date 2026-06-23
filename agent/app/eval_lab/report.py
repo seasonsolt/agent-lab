@@ -47,7 +47,7 @@ def build_report_from_records(
 ) -> EvalReport:
     score_records = [ScoreRecord.model_validate(score) for score in scores]
     workflow_nodes = [
-        WorkflowNodeRecord.model_validate(node)
+        WorkflowNodeRecord.model_validate({**node, "task_id": score.get("task_id")})
         for score in scores
         for node in score.get("details", {}).get("workflow_nodes", [])
     ]

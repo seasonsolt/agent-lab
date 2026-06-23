@@ -68,6 +68,7 @@ class WorkflowNodeRecord(BaseModel):
     node_type: WorkflowNodeType
     status: WorkflowNodeStatus
     duration_ms: int = Field(ge=0)
+    task_id: str | None = None
     artifact_paths: list[str] = Field(default_factory=list)
     trace_ids: list[str] = Field(default_factory=list)
     error: str | None = None

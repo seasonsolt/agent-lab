@@ -144,8 +144,16 @@ class FakeSandbox:
 
 
 class FakeWorkflowRunner:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        workflow_status: str = "passed",
+        sandbox_result: SandboxRunResult | None = None,
+        node_status: str = "passed",
+    ) -> None:
         self.calls: list[dict[str, Any]] = []
+        self.workflow_status = workflow_status
+        self.sandbox_result = sandbox_result
+        self.node_status = node_status
 
     def run(
         self,
@@ -177,17 +185,18 @@ class FakeWorkflowRunner:
         from app.eval_lab.workflow_runner import WorkflowRunResult
 
         return WorkflowRunResult(
-            status="passed",
+            status=self.workflow_status,
             nodes=[
                 WorkflowNodeRecord(
                     node_id="scan",
                     node_type="tool",
-                    status="passed",
+                    status=self.node_status,
                     duration_ms=1,
                     artifact_paths=[".agent-lab/artifacts/scan.txt"],
                 )
             ],
             trace_ids=["trace-workflow"],
+            sandbox_result=self.sandbox_result,
         )
 
 
@@ -487,3 +496,42 @@ def test_eval_runner_uses_workflow_runner_when_task_has_workflow(tmp_path):
     assert workflow_runner.calls[0]["manifest_id"] == "static-quality"
     assert repo.finished == [{"run_id": "eval-1", "status": "passed", "trace_ids": ["trace-workflow"], "error": None}]
     assert repo.scores[0]["details"]["workflow_nodes"][0]["node_id"] == "scan"
+
+
+def test_eval_runner_preserves_failed_workflow_status_with_passed_sandbox_result(tmp_path):
+    skill_dir = tmp_path / "skill"
+    task_pack_dir = tmp_path / "pack"
+    runs_root = tmp_path / "runs"
+    write_skill(skill_dir)
+    write_workflow_task_pack(task_pack_dir)
+    repo = FakeRepository()
+    sandbox_result = SandboxRunResult(
+        task_id="fix-1-scan",
+        status="passed",
+        agent_output="agent output",
+        changed_files=["changed.txt"],
+        trace_ids=["trace-sandbox"],
+    )
+    workflow_runner = FakeWorkflowRunner(
+        workflow_status="failed",
+        sandbox_result=sandbox_result,
+        node_status="failed",
+    )
+
+    run = EvalRunner(
+        repo=repo,
+        sandbox=FakeSandbox(),
+        workflow_runner=workflow_runner,
+        runs_root=runs_root,
+    ).run(
+        skill_dir=skill_dir,
+        task_pack_dir=task_pack_dir,
+        network_enabled=False,
+        timeout_seconds=8,
+    )
+
+    assert run["status"] == "failed"
+    assert repo.finished == [{"run_id": "eval-1", "status": "failed", "trace_ids": ["trace-workflow"], "error": None}]
+    assert repo.scores[0]["details"]["sandbox_status"] == "passed"
+    assert repo.scores[0]["details"]["workflow_status"] == "failed"
+    assert repo.scores[0]["details"]["workflow_nodes"][0]["status"] == "failed"

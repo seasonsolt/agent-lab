@@ -214,5 +214,6 @@ def test_build_report_includes_workflow_nodes_from_score_details():
     )
 
     assert len(report.workflow_nodes) == 1
+    assert report.workflow_nodes[0].task_id == "task-1"
     assert report.workflow_nodes[0].node_id == "scan"
     assert report.workflow_nodes[0].artifact_paths == [".agent-lab/artifacts/scan.txt"]

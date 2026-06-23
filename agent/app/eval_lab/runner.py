@@ -137,30 +137,36 @@ class EvalRunner:
                 normalized_score = round(score.score / score.max_score * task.max_score, 6)
                 if workflow_result is not None:
                     workflow_nodes = [node.model_dump() for node in workflow_result.nodes]
+                    execution_status = workflow_result.status
                 else:
                     workflow_nodes = []
+                    execution_status = result.status
                 task_statuses.append(
                     self._task_status_from_score(
                         normalized_score=normalized_score,
                         max_score=task.max_score,
-                        sandbox_status=result.status,
+                        sandbox_status=execution_status,
                     )
                 )
+                score_details = {
+                    **score.details,
+                    "scorer_score": score.score,
+                    "scorer_max_score": score.max_score,
+                    "sandbox_status": result.status,
+                    "sandbox_changed_files": result.changed_files,
+                    "sandbox_error": result.agent_output if result.status != "passed" else None,
+                    "workflow_nodes": workflow_nodes,
+                }
+                if workflow_result is not None:
+                    score_details["workflow_status"] = workflow_result.status
+
                 self.repo.add_score(
                     eval_run_id=run_id,
                     task_id=task.id,
                     score_type="auto",
                     score=normalized_score,
                     max_score=task.max_score,
-                    details={
-                        **score.details,
-                        "scorer_score": score.score,
-                        "scorer_max_score": score.max_score,
-                        "sandbox_status": result.status,
-                        "sandbox_changed_files": result.changed_files,
-                        "sandbox_error": result.agent_output if result.status != "passed" else None,
-                        "workflow_nodes": workflow_nodes,
-                    },
+                    details=score_details,
                 )
 
             status = self._finish_status(task_statuses)
