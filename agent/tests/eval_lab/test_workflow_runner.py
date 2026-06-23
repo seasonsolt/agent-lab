@@ -276,6 +276,47 @@ def test_workflow_runner_rejects_unsafe_output_artifact_names(tmp_path, unsafe_o
     assert not (workspace / ".agent-lab" / "artifacts" / "nested").exists()
 
 
+def test_workflow_runner_rejects_unsafe_fallback_artifact_name_from_node_id(tmp_path):
+    workspace = tmp_path / "workspace"
+    fixture = tmp_path / "fixture"
+    skill = tmp_path / "skill"
+    workspace.mkdir()
+    fixture.mkdir()
+    skill.mkdir()
+    manifest = WorkflowManifest(
+        id="unsafe-fallback-output",
+        name="Unsafe Fallback Output",
+        nodes=[
+            WorkflowNodeSpec(
+                id="../../../escaped",
+                type="tool",
+                needs=[],
+                timeout_seconds=5,
+                on_failure="fail_workflow",
+                command="python -c \"print('scan')\"",
+            )
+        ],
+    )
+
+    result = WorkflowRunner(sandbox=FakeSandbox()).run(
+        manifest=manifest,
+        run_id="eval-1",
+        task_id="case-1",
+        task_prompt="Fix it.",
+        skill_host_dir=skill,
+        fixture_host_dir=fixture,
+        workspace_host_dir=workspace,
+        network_enabled=False,
+        timeout_seconds=60,
+    )
+
+    assert result.status == "failed"
+    assert result.nodes[0].status == "failed"
+    assert "Unsafe workflow artifact output name" in result.nodes[0].error
+    assert not (workspace / "escaped.txt").exists()
+    assert not (workspace.parent / "escaped.txt").exists()
+
+
 def test_workflow_runner_agent_prompt_uses_declared_dependency_output_name(tmp_path):
     workspace = tmp_path / "workspace"
     fixture = tmp_path / "fixture"

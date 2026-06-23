@@ -341,20 +341,23 @@ class WorkflowRunner:
 
 def _artifact_name(node: WorkflowNodeSpec) -> str:
     if node.outputs:
-        artifact_name = node.outputs[0]
-        artifact_path = Path(artifact_name)
-        if (
-            not artifact_name
-            or artifact_path.is_absolute()
-            or artifact_path.parts != (artifact_name,)
-            or "/" in artifact_name
-            or "\\" in artifact_name
-            or artifact_name in {".", ".."}
-        ):
-            raise ValueError(f"Unsafe workflow artifact output name for node '{node.id}': {artifact_name}")
-        return artifact_name
+        return _validate_artifact_name(node.outputs[0], node.id)
     suffix = "md" if node.type == "aggregate" else "txt"
-    return f"{node.id}.{suffix}"
+    return _validate_artifact_name(f"{node.id}.{suffix}", node.id)
+
+
+def _validate_artifact_name(artifact_name: str, node_id: str) -> str:
+    artifact_path = Path(artifact_name)
+    if (
+        not artifact_name
+        or artifact_path.is_absolute()
+        or artifact_path.parts != (artifact_name,)
+        or "/" in artifact_name
+        or "\\" in artifact_name
+        or artifact_name in {".", ".."}
+    ):
+        raise ValueError(f"Unsafe workflow artifact output name for node '{node_id}': {artifact_name}")
+    return artifact_name
 
 
 def _dedupe(values: list[str]) -> list[str]:
