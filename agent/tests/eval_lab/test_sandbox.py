@@ -18,6 +18,24 @@ def test_build_task_prompt_includes_skill_workspace_and_task():
     assert "Fix the failing test." in prompt
 
 
+def test_build_task_prompt_includes_bounded_evaluation_constraints():
+    prompt = build_task_prompt(
+        skill_container_path=Path("/skills/demo/SKILL.md"),
+        task_prompt="Fix the failing test.",
+    )
+
+    expected_phrases = [
+        "This is a bounded evaluation task.",
+        "Edit only files needed to satisfy the task.",
+        "Do not add dependencies.",
+        "Do not spend time on documentation unless the task asks for it.",
+        "Prefer a small correct implementation over exploration.",
+        "When the implementation is complete, stop and return a concise summary.",
+    ]
+    for phrase in expected_phrases:
+        assert phrase in prompt
+
+
 def test_sandbox_result_defaults_lists():
     result = SandboxRunResult(task_id="task-1", status="passed", agent_output="done")
 

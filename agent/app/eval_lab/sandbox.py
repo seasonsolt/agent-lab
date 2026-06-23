@@ -27,10 +27,18 @@ class SandboxRunResult(BaseModel):
 
 
 def build_task_prompt(skill_container_path: Path, task_prompt: str) -> str:
-    return (
-        f"Use the skill instructions at {skill_container_path.as_posix()}.\n"
-        "Work inside /workspace.\n"
-        f"Task: {task_prompt}"
+    return "\n".join(
+        [
+            f"Use the skill instructions at {skill_container_path.as_posix()}.",
+            "Work inside /workspace.",
+            "This is a bounded evaluation task.",
+            "Edit only files needed to satisfy the task.",
+            "Do not add dependencies.",
+            "Do not spend time on documentation unless the task asks for it.",
+            "Prefer a small correct implementation over exploration.",
+            "When the implementation is complete, stop and return a concise summary.",
+            f"Task: {task_prompt}",
+        ]
     )
 
 
