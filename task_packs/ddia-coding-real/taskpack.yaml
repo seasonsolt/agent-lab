@@ -4,7 +4,19 @@ domain: backend-data-systems
 tasks:
   - id: order-event-projection-001
     type: coding
-    prompt: Implement a robust order event projection for an at-least-once event stream. The projection receives duplicate and out-of-order events. Keep a per-order read model, ignore duplicates and stale versions, reject invalid state transitions into a dead-letter list, and preserve useful operational evidence. Do not add external dependencies. Hidden tests will check correctness under replay, stale delivery, and invalid transitions.
+    prompt: >-
+      Implement OrderProjector.apply(event) in order_projection.py for an
+      at-least-once order event stream. Maintain a deterministic per-order read
+      model with status, amount, version, and enough event-id evidence to
+      ignore duplicate deliveries. Ignore stale lower-version events. Valid
+      status flow: order_created creates status "created"; payment_authorized
+      moves created orders to "paid"; order_shipped moves paid orders to
+      "shipped"; order_cancelled moves created or paid orders to terminal
+      status "cancelled". Preserve terminal cancellation when later events
+      arrive, but record invalid higher-version transitions in dead_letters and
+      keep version evidence up to date. Payment events that arrive before
+      order_created must not create a durable order; record them as dead
+      letters. Do not add dependencies or edit documentation.
     fixture: tasks/order-event-projection-001/fixture
     expected: tasks/order-event-projection-001/expected
     scorer: tasks/order-event-projection-001/scorer.py
