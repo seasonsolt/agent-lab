@@ -33,7 +33,9 @@ class WorkflowRunner:
         workspace_host_dir: Path,
         network_enabled: bool,
         timeout_seconds: int,
+        sandbox_workspace_host_dir: Path | None = None,
     ) -> WorkflowRunResult:
+        sandbox_workspace_host_dir = sandbox_workspace_host_dir or workspace_host_dir
         artifacts_dir = workspace_host_dir / ".agent-lab" / "artifacts"
         artifacts_dir.mkdir(parents=True, exist_ok=True)
         completed: set[str] = set()
@@ -98,6 +100,7 @@ class WorkflowRunner:
                         skill_host_dir=skill_host_dir,
                         fixture_host_dir=fixture_host_dir,
                         workspace_host_dir=workspace_host_dir,
+                        sandbox_workspace_host_dir=sandbox_workspace_host_dir,
                         artifacts_dir=artifacts_dir,
                         network_enabled=network_enabled,
                         timeout_seconds=min(timeout_seconds, node.timeout_seconds),
@@ -150,6 +153,7 @@ class WorkflowRunner:
         skill_host_dir: Path,
         fixture_host_dir: Path,
         workspace_host_dir: Path,
+        sandbox_workspace_host_dir: Path,
         artifacts_dir: Path,
         network_enabled: bool,
         timeout_seconds: int,
@@ -165,6 +169,7 @@ class WorkflowRunner:
                 skill_host_dir=skill_host_dir,
                 fixture_host_dir=fixture_host_dir,
                 workspace_host_dir=workspace_host_dir,
+                sandbox_workspace_host_dir=sandbox_workspace_host_dir,
                 artifacts_dir=artifacts_dir,
                 network_enabled=network_enabled,
                 timeout_seconds=timeout_seconds,
@@ -191,6 +196,7 @@ class WorkflowRunner:
         skill_host_dir: Path,
         fixture_host_dir: Path,
         workspace_host_dir: Path,
+        sandbox_workspace_host_dir: Path,
         artifacts_dir: Path,
         network_enabled: bool,
         timeout_seconds: int,
@@ -206,7 +212,7 @@ class WorkflowRunner:
                 task_prompt=self._build_agent_prompt(node, node_by_id, task_prompt, artifacts_dir),
                 skill_host_dir=skill_host_dir,
                 fixture_host_dir=fixture_host_dir,
-                workspace_host_dir=workspace_host_dir,
+                workspace_host_dir=sandbox_workspace_host_dir,
                 network_enabled=network_enabled,
                 timeout_seconds=timeout_seconds,
             )

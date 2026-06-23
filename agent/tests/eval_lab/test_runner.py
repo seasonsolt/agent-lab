@@ -133,6 +133,7 @@ class FakeSandbox:
                 "timeout_seconds": timeout_seconds,
             }
         )
+        workspace_host_dir.mkdir(parents=True, exist_ok=True)
         (workspace_host_dir / "changed.txt").write_text("changed\n", encoding="utf-8")
         return SandboxRunResult(
             task_id=task_id,
@@ -166,6 +167,7 @@ class FakeWorkflowRunner:
         workspace_host_dir: Path,
         network_enabled: bool,
         timeout_seconds: int,
+        sandbox_workspace_host_dir: Path | None = None,
     ):
         self.calls.append(
             {
@@ -176,6 +178,7 @@ class FakeWorkflowRunner:
                 "skill_host_dir": skill_host_dir,
                 "fixture_host_dir": fixture_host_dir,
                 "workspace_host_dir": workspace_host_dir,
+                "sandbox_workspace_host_dir": sandbox_workspace_host_dir,
                 "network_enabled": network_enabled,
                 "timeout_seconds": timeout_seconds,
             }
@@ -360,6 +363,38 @@ def test_eval_runner_happy_path_uses_repo_sandbox_scorer_and_run_dir(tmp_path):
     assert repo.finished == [{"run_id": "eval-1", "status": "passed", "trace_ids": ["trace-1"], "error": None}]
 
 
+def test_eval_runner_maps_container_run_workspace_to_host_sandbox_path(tmp_path):
+    skill_dir = tmp_path / "skill"
+    task_pack_dir = tmp_path / "pack"
+    host_runs_root = tmp_path / "host-runs"
+    container_runs_root = tmp_path / "container-runs"
+    write_skill(skill_dir)
+    write_task_pack(task_pack_dir)
+    repo = FakeRepository()
+    sandbox = FakeSandbox()
+
+    run = EvalRunner(
+        repo=repo,
+        sandbox=sandbox,
+        runs_root=container_runs_root,
+        host_runs_root=host_runs_root,
+    ).run(
+        skill_dir=skill_dir,
+        task_pack_dir=task_pack_dir,
+        network_enabled=True,
+        timeout_seconds=12,
+    )
+
+    assert run["status"] == "passed"
+    assert (container_runs_root / "eval-1" / "fix-1" / "input.txt").read_text(encoding="utf-8") == "before\n"
+    assert (container_runs_root / "eval-1" / "fix-1" / "agent_output.json").exists()
+    assert sandbox.calls[0]["workspace_host_dir"] == host_runs_root / "eval-1" / "fix-1"
+    assert sandbox.calls[0]["fixture_host_dir"] == task_pack_dir / "tasks" / "fix-1" / "fixture"
+    assert repo.running_marks == [
+        {"run_id": "eval-1", "sandbox_container_id": str(container_runs_root / "eval-1")}
+    ]
+
+
 def test_eval_runner_replaces_existing_run_dir(tmp_path):
     skill_dir = tmp_path / "skill"
     task_pack_dir = tmp_path / "pack"
@@ -472,7 +507,8 @@ def test_eval_runner_finish_status_is_conservative_for_empty_tasks(tmp_path):
 def test_eval_runner_uses_workflow_runner_when_task_has_workflow(tmp_path):
     skill_dir = tmp_path / "skill"
     task_pack_dir = tmp_path / "pack"
-    runs_root = tmp_path / "runs"
+    runs_root = tmp_path / "container-runs"
+    host_runs_root = tmp_path / "host-runs"
     write_skill(skill_dir)
     write_workflow_task_pack(task_pack_dir)
     repo = FakeRepository()
@@ -484,6 +520,7 @@ def test_eval_runner_uses_workflow_runner_when_task_has_workflow(tmp_path):
         sandbox=sandbox,
         workflow_runner=workflow_runner,
         runs_root=runs_root,
+        host_runs_root=host_runs_root,
     ).run(
         skill_dir=skill_dir,
         task_pack_dir=task_pack_dir,
@@ -494,6 +531,8 @@ def test_eval_runner_uses_workflow_runner_when_task_has_workflow(tmp_path):
     assert run["status"] == "passed"
     assert sandbox.calls == []
     assert workflow_runner.calls[0]["manifest_id"] == "static-quality"
+    assert workflow_runner.calls[0]["workspace_host_dir"] == runs_root / "eval-1" / "fix-1"
+    assert workflow_runner.calls[0]["sandbox_workspace_host_dir"] == host_runs_root / "eval-1" / "fix-1"
     assert repo.finished == [{"run_id": "eval-1", "status": "passed", "trace_ids": ["trace-workflow"], "error": None}]
     assert repo.scores[0]["details"]["workflow_nodes"][0]["node_id"] == "scan"
 

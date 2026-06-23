@@ -24,11 +24,17 @@ class EvalRunner:
         sandbox: DockerSandbox | None = None,
         workflow_runner: WorkflowRunner | None = None,
         runs_root: Path | None = None,
+        host_runs_root: Path | None = None,
     ) -> None:
         self.repo = repo or EvalRepository()
         self.sandbox = sandbox or DockerSandbox()
         self.workflow_runner = workflow_runner or WorkflowRunner(sandbox=self.sandbox)
-        self.runs_root = Path(runs_root or Settings.eval_lab_host_runs_dir)
+        if runs_root is None:
+            self.runs_root = Path(Settings.eval_lab_container_runs_dir)
+            self.host_runs_root = Path(host_runs_root or Settings.eval_lab_host_runs_dir)
+        else:
+            self.runs_root = Path(runs_root)
+            self.host_runs_root = Path(host_runs_root or runs_root)
 
     def run(
         self,
@@ -63,7 +69,7 @@ class EvalRunner:
 
         eval_run = self.repo.create_eval_run(skill_manifest.id, task_pack_manifest.id)
         run_id = eval_run["id"]
-        run_dir = self.runs_root / run_id
+        run_dir = ensure_child_path(self.runs_root, self.runs_root / run_id)
         trace_ids: list[str] = []
 
         try:
@@ -75,6 +81,7 @@ class EvalRunner:
 
             for task in task_pack_manifest.tasks:
                 workspace_dir = ensure_child_path(run_dir, run_dir / task.id)
+                workspace_host_dir = self._host_path_for_run_workspace(workspace_dir)
                 fixture_dir = task_pack_dir / task.fixture
                 expected_dir = task_pack_dir / task.expected
                 scorer_path = task_pack_dir / task.scorer
@@ -91,6 +98,7 @@ class EvalRunner:
                         skill_host_dir=skill_dir,
                         fixture_host_dir=fixture_dir,
                         workspace_host_dir=workspace_dir,
+                        sandbox_workspace_host_dir=workspace_host_dir,
                         network_enabled=network_enabled,
                         timeout_seconds=timeout_seconds,
                     )
@@ -112,7 +120,7 @@ class EvalRunner:
                         task_prompt=task.prompt,
                         skill_host_dir=skill_dir,
                         fixture_host_dir=fixture_dir,
-                        workspace_host_dir=workspace_dir,
+                        workspace_host_dir=workspace_host_dir,
                         network_enabled=network_enabled,
                         timeout_seconds=timeout_seconds,
                     )
@@ -187,3 +195,9 @@ class EvalRunner:
         if sandbox_status != "passed":
             return "failed"
         return "passed" if normalized_score / max_score >= 0.6 else "failed"
+
+    def _host_path_for_run_workspace(self, workspace_dir: Path) -> Path:
+        container_runs_root = self.runs_root.resolve()
+        resolved_workspace = ensure_child_path(container_runs_root, workspace_dir)
+        relative_workspace = resolved_workspace.relative_to(container_runs_root)
+        return ensure_child_path(self.host_runs_root, self.host_runs_root / relative_workspace)
