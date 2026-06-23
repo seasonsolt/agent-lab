@@ -1,0 +1,27 @@
+id: security-appsec
+name: Security AppSec Workflow
+max_parallel_nodes: 2
+nodes:
+  - id: sast_scan
+    type: tool
+    command: "python -c \"print('SAST evidence: user-controlled data must not be concatenated into SQL strings.')\""
+    needs: []
+    timeout_seconds: 10
+    on_failure: continue_with_artifact
+    outputs:
+      - sast_scan.txt
+  - id: aggregate_findings
+    type: aggregate
+    needs:
+      - sast_scan
+    timeout_seconds: 10
+    on_failure: fail_workflow
+    outputs:
+      - aggregate_findings.md
+  - id: agent_fix
+    type: coding_agent
+    needs:
+      - aggregate_findings
+    timeout_seconds: 300
+    on_failure: fail_workflow
+    prompt: "Use the security finding as evidence. Preserve behavior while removing injection risk."

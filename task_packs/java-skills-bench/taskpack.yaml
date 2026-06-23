@@ -1,0 +1,56 @@
+id: java-skills-bench
+name: Java Skills Bench
+domain: java
+tasks:
+  - id: null-resource-exception
+    type: coding
+    track: static-quality
+    capability: resource-management
+    workflow: workflows/static-quality.yaml
+    knowledge_sources:
+      - Sonar-style static quality
+      - Java resource management
+    prompt: >-
+      Fix ResourceLoader.loadFirstLine(Path) so it handles missing files,
+      closes resources, and returns Optional.empty() instead of throwing for
+      absent input. Keep the public method signature unchanged. Do not delete
+      tests or add dependencies.
+    fixture: tasks/static-quality/null-resource-exception/fixture
+    expected: tasks/static-quality/null-resource-exception/expected
+    scorer: scorers/java_assertions.py
+    max_score: 100
+  - id: ddia-idempotent-consumer
+    type: coding
+    track: architecture
+    capability: messaging-streaming
+    workflow: workflows/architecture-review.yaml
+    knowledge_sources:
+      - DDIA
+      - idempotent consumer pattern
+      - replay-safe event processing
+    prompt: >-
+      Fix OrderEventConsumer.apply(OrderEvent) for an at-least-once event
+      stream. Duplicate event IDs must be ignored, stale lower versions must not
+      overwrite newer state, payment before creation must not create an order,
+      and cancellation must remain terminal. Keep the implementation in memory
+      and do not add dependencies.
+    fixture: tasks/architecture/ddia-idempotent-consumer/fixture
+    expected: tasks/architecture/ddia-idempotent-consumer/expected
+    scorer: scorers/java_assertions.py
+    max_score: 100
+  - id: sql-injection
+    type: coding
+    track: security-appsec
+    capability: injection
+    workflow: workflows/security-appsec.yaml
+    knowledge_sources:
+      - AppSec
+      - SQL injection prevention
+    prompt: >-
+      Fix UserSearch.buildFindByEmail(String) so user input is represented as a
+      bound parameter instead of concatenated into SQL. Preserve the Query API,
+      keep behavior deterministic, and do not add dependencies.
+    fixture: tasks/security-appsec/sql-injection/fixture
+    expected: tasks/security-appsec/sql-injection/expected
+    scorer: scorers/java_assertions.py
+    max_score: 100

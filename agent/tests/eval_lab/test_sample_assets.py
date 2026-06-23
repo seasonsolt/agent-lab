@@ -34,3 +34,21 @@ def test_ddia_coding_task_pack_is_valid_and_bounded():
     ]
     for phrase in expected_phrases:
         assert phrase in prompt
+
+
+def test_java_skills_bench_task_pack_is_valid():
+    root = Path("/lab")
+    task_pack = load_task_pack_manifest(root / "task_packs" / "java-skills-bench")
+
+    assert task_pack.id == "java-skills-bench"
+    assert [task.track for task in task_pack.tasks] == [
+        "static-quality",
+        "architecture",
+        "security-appsec",
+    ]
+    assert [task.capability for task in task_pack.tasks] == [
+        "resource-management",
+        "messaging-streaming",
+        "injection",
+    ]
+    assert all(task.workflow for task in task_pack.tasks)

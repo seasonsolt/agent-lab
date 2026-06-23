@@ -1,0 +1,27 @@
+id: static-quality
+name: Static Quality Workflow
+max_parallel_nodes: 2
+nodes:
+  - id: static_scan
+    type: tool
+    command: "python -c \"print('Check null handling, resource closing, broad suppressions, and test deletion.')\""
+    needs: []
+    timeout_seconds: 10
+    on_failure: continue_with_artifact
+    outputs:
+      - static_scan.txt
+  - id: aggregate_findings
+    type: aggregate
+    needs:
+      - static_scan
+    timeout_seconds: 10
+    on_failure: fail_workflow
+    outputs:
+      - aggregate_findings.md
+  - id: agent_fix
+    type: coding_agent
+    needs:
+      - aggregate_findings
+    timeout_seconds: 300
+    on_failure: fail_workflow
+    prompt: "Use the static-quality findings as evidence. Fix the Java implementation without deleting tests or hiding failures."

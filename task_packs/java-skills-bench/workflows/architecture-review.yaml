@@ -1,0 +1,36 @@
+id: architecture-review
+name: Architecture Review Workflow
+max_parallel_nodes: 3
+nodes:
+  - id: ddia_lens
+    type: tool
+    command: "python -c \"print('DDIA lens: preserve idempotency, ordering evidence, source-of-truth boundaries, and replay safety.')\""
+    needs: []
+    timeout_seconds: 10
+    on_failure: continue_with_artifact
+    outputs:
+      - ddia_lens.txt
+  - id: concurrency_lens
+    type: tool
+    command: "python -c \"print('Concurrency lens: duplicate delivery and retry races must not corrupt durable state.')\""
+    needs: []
+    timeout_seconds: 10
+    on_failure: continue_with_artifact
+    outputs:
+      - concurrency_lens.txt
+  - id: aggregate_findings
+    type: aggregate
+    needs:
+      - ddia_lens
+      - concurrency_lens
+    timeout_seconds: 10
+    on_failure: fail_workflow
+    outputs:
+      - aggregate_findings.md
+  - id: agent_fix
+    type: coding_agent
+    needs:
+      - aggregate_findings
+    timeout_seconds: 300
+    on_failure: fail_workflow
+    prompt: "Use the architecture findings as evidence. Implement the smallest correct Java change."
