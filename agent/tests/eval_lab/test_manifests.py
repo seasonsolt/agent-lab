@@ -234,6 +234,86 @@ def test_load_task_pack_manifest_rejects_scorer_directory(tmp_path):
         load_task_pack_manifest(pack_dir)
 
 
+def test_load_task_pack_manifest_accepts_java_workflow_metadata(tmp_path):
+    pack_dir = tmp_path / "pack"
+    task_dir = pack_dir / "tasks" / "case-1"
+    workflow_dir = pack_dir / "workflows"
+    task_dir.mkdir(parents=True)
+    workflow_dir.mkdir()
+    (task_dir / "fixture").mkdir()
+    (task_dir / "expected").mkdir()
+    (task_dir / "scorer.py").write_text("print('{}')\n", encoding="utf-8")
+    (workflow_dir / "static-quality.yaml").write_text(
+        "id: static-quality\n"
+        "name: Static Quality\n"
+        "nodes:\n"
+        "  - id: scan\n"
+        "    type: tool\n"
+        "    needs: []\n"
+        "    timeout_seconds: 5\n"
+        "    on_failure: fail_workflow\n"
+        "    command: python -c \"print('scan')\"\n",
+        encoding="utf-8",
+    )
+    (pack_dir / "taskpack.yaml").write_text(
+        "id: java-skills-bench\n"
+        "name: Java Skills Bench\n"
+        "domain: java\n"
+        "tasks:\n"
+        "  - id: null-resource-exception\n"
+        "    type: coding\n"
+        "    track: static-quality\n"
+        "    capability: resource-management\n"
+        "    workflow: workflows/static-quality.yaml\n"
+        "    knowledge_sources:\n"
+        "      - Sonar-style static quality\n"
+        "    prompt: Fix resource handling.\n"
+        "    fixture: tasks/case-1/fixture\n"
+        "    expected: tasks/case-1/expected\n"
+        "    scorer: tasks/case-1/scorer.py\n"
+        "    max_score: 100\n",
+        encoding="utf-8",
+    )
+
+    manifest = load_task_pack_manifest(pack_dir)
+
+    task = manifest.tasks[0]
+    assert task.track == "static-quality"
+    assert task.capability == "resource-management"
+    assert task.workflow == "workflows/static-quality.yaml"
+    assert task.knowledge_sources == ["Sonar-style static quality"]
+
+
+def test_load_task_pack_manifest_rejects_workflow_path_escape(tmp_path):
+    pack_dir = tmp_path / "pack"
+    outside = tmp_path / "outside"
+    task_dir = pack_dir / "tasks" / "case-1"
+    outside.mkdir()
+    task_dir.mkdir(parents=True)
+    (task_dir / "fixture").mkdir()
+    (task_dir / "expected").mkdir()
+    (task_dir / "scorer.py").write_text("print('{}')\n", encoding="utf-8")
+    (outside / "workflow.yaml").write_text("id: outside\nname: Outside\nnodes: []\n", encoding="utf-8")
+    (pack_dir / "taskpack.yaml").write_text(
+        "id: java-skills-bench\n"
+        "name: Java Skills Bench\n"
+        "domain: java\n"
+        "tasks:\n"
+        "  - id: case-1\n"
+        "    type: coding\n"
+        "    workflow: ../outside/workflow.yaml\n"
+        "    prompt: Fix it.\n"
+        "    fixture: tasks/case-1/fixture\n"
+        "    expected: tasks/case-1/expected\n"
+        "    scorer: tasks/case-1/scorer.py\n"
+        "    max_score: 100\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="workflow path is outside task pack"):
+        load_task_pack_manifest(pack_dir)
+
+
 def test_hash_directory_changes_when_file_changes(tmp_path):
     folder = tmp_path / "folder"
     folder.mkdir()

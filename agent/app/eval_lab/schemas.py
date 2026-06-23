@@ -26,6 +26,10 @@ class TaskSpec(BaseModel):
     expected: str = Field(min_length=1)
     scorer: str = Field(min_length=1)
     max_score: float = Field(gt=0)
+    track: str | None = None
+    capability: str | None = None
+    workflow: str | None = None
+    knowledge_sources: list[str] = Field(default_factory=list)
 
 
 class TaskPackManifest(BaseModel):

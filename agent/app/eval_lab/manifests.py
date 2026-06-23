@@ -41,6 +41,21 @@ def _resolve_task_path(task_pack_dir: Path, task: TaskSpec, field_name: str) -> 
     return resolved_path
 
 
+def _resolve_optional_task_path(task_pack_dir: Path, task: TaskSpec, field_name: str) -> Path | None:
+    raw_path = getattr(task, field_name)
+    if raw_path is None:
+        return None
+    if Path(raw_path).is_absolute():
+        raise ValueError(f"Task '{task.id}' {field_name} path must be relative")
+    resolved_root = task_pack_dir.resolve()
+    resolved_path = (task_pack_dir / raw_path).resolve()
+    if resolved_path != resolved_root and resolved_root not in resolved_path.parents:
+        raise ValueError(f"Task '{task.id}' {field_name} path is outside task pack")
+    if not resolved_path.exists():
+        raise ValueError(f"Task '{task.id}' {field_name} path does not exist: {raw_path}")
+    return resolved_path
+
+
 def load_task_pack_manifest(task_pack_dir: Path) -> TaskPackManifest:
     manifest = TaskPackManifest.model_validate(_load_yaml(task_pack_dir / "taskpack.yaml"))
     for task in manifest.tasks:
@@ -53,4 +68,7 @@ def load_task_pack_manifest(task_pack_dir: Path) -> TaskPackManifest:
             raise ValueError(f"Task '{task.id}' expected path must be a directory")
         if not scorer.is_file():
             raise ValueError(f"Task '{task.id}' scorer path must be a file")
+        workflow = _resolve_optional_task_path(task_pack_dir, task, "workflow")
+        if workflow is not None and not workflow.is_file():
+            raise ValueError(f"Task '{task.id}' workflow path must be a file")
     return manifest
