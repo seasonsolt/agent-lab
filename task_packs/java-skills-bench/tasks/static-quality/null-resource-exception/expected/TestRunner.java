@@ -8,14 +8,18 @@ public class TestRunner {
     public static void main(String[] args) throws Exception {
         ResourceLoader loader = new ResourceLoader();
         Path dir = Files.createTempDirectory("agent-lab-static");
-        Path present = dir.resolve("present.txt");
-        Path empty = dir.resolve("empty.txt");
-        Files.writeString(present, "  value  \nsecond\n");
+        Path alpha = dir.resolve("alpha-" + System.nanoTime() + ".txt");
+        Path beta = dir.resolve("beta-resource.data");
+        Path empty = dir.resolve("blank-" + System.nanoTime() + ".txt");
+        Path missing = dir.resolve("missing-" + System.nanoTime() + ".txt");
+        Files.writeString(alpha, "  first value  \nsecond\n");
+        Files.writeString(beta, "\tsecond value\t\nignored\n");
         Files.writeString(empty, "");
 
-        assertEquals(Optional.of("value"), loader.loadFirstLine(present), "trims first line");
+        assertEquals(Optional.of("first value"), loader.loadFirstLine(alpha), "trims arbitrary first file");
+        assertEquals(Optional.of("second value"), loader.loadFirstLine(beta), "trims arbitrary second file");
         assertEquals(Optional.empty(), loader.loadFirstLine(empty), "empty file");
-        assertEquals(Optional.empty(), loader.loadFirstLine(dir.resolve("missing.txt")), "missing file");
+        assertEquals(Optional.empty(), loader.loadFirstLine(missing), "missing file");
     }
 
     private static void assertEquals(Object expected, Object actual, String label) {

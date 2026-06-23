@@ -4,39 +4,55 @@ import com.agentlab.architecture.OrderView;
 
 public class TestRunner {
     public static void main(String[] args) {
+        assertLatePaymentIgnored(new OrderEvent("evt-late-91", "late-order-91", 4, "payment_authorized", 0));
+
+        OrderEvent[] streamA = new OrderEvent[] {
+            new OrderEvent("evt-A-create", "order-A-17", 10, "order_created", 123),
+            new OrderEvent("evt-A-pay", "order-A-17", 11, "payment_authorized", 0),
+            new OrderEvent("evt-A-pay", "order-A-17", 11, "payment_authorized", 0),
+            new OrderEvent("evt-A-cancel", "order-A-17", 12, "order_cancelled", 0),
+            new OrderEvent("evt-A-stale-pay", "order-A-17", 11, "payment_authorized", 0),
+            new OrderEvent("evt-A-after-cancel", "order-A-17", 13, "payment_authorized", 0)
+        };
+        assertStreamResult(streamA, "order-A-17", new OrderView("cancelled", 123, 12), "stream A");
+
+        OrderEvent[] streamB = new OrderEvent[] {
+            new OrderEvent("evt-B-create", "order-B-29", 3, "order_created", 77),
+            new OrderEvent("evt-B-pay", "order-B-29", 4, "payment_authorized", 0),
+            new OrderEvent("evt-B-stale-create", "order-B-29", 2, "order_created", 999),
+            new OrderEvent("evt-B-pay", "order-B-29", 4, "payment_authorized", 0),
+            new OrderEvent("evt-B-cancel", "order-B-29", 6, "order_cancelled", 0),
+            new OrderEvent("evt-B-after-cancel", "order-B-29", 7, "payment_authorized", 0)
+        };
+        assertStreamResult(streamB, "order-B-29", new OrderView("cancelled", 77, 6), "stream B");
+    }
+
+    private static void assertLatePaymentIgnored(OrderEvent event) {
         OrderEventConsumer consumer = new OrderEventConsumer();
+        consumer.apply(event);
+        assertTrue(!consumer.orders().containsKey(event.orderId()), "late payment must not create order");
+    }
 
-        consumer.apply(new OrderEvent("late-pay", "o2", 2, "payment_authorized", 0));
-        assertTrue(!consumer.orders().containsKey("o2"), "late payment must not create order");
+    private static void assertStreamResult(OrderEvent[] stream, String orderId, OrderView expected, String label) {
+        OrderEventConsumer consumer = new OrderEventConsumer();
+        for (OrderEvent event : stream) {
+            consumer.apply(event);
+        }
+        assertEquals(expected, consumer.orders().get(orderId), label + " final state");
 
-        consumer.apply(new OrderEvent("e1", "o1", 1, "order_created", 42));
-        consumer.apply(new OrderEvent("e2", "o1", 2, "payment_authorized", 0));
-        consumer.apply(new OrderEvent("e2", "o1", 2, "payment_authorized", 0));
-        consumer.apply(new OrderEvent("e4", "o1", 4, "order_cancelled", 0));
-        consumer.apply(new OrderEvent("e3", "o1", 3, "payment_authorized", 0));
-        consumer.apply(new OrderEvent("e5", "o1", 5, "payment_authorized", 0));
-
-        OrderView order = consumer.orders().get("o1");
-        assertEquals("cancelled", order.status(), "cancellation remains terminal");
-        assertEquals(42, order.amount(), "amount preserved");
-        assertEquals(5, order.version(), "version evidence advances for invalid newer event");
+        for (OrderEvent event : stream) {
+            consumer.apply(event);
+        }
+        assertEquals(expected, consumer.orders().get(orderId), label + " same-instance replay");
 
         OrderEventConsumer replay = new OrderEventConsumer();
-        OrderEvent[] stream = new OrderEvent[] {
-            new OrderEvent("e1", "o1", 1, "order_created", 42),
-            new OrderEvent("e2", "o1", 2, "payment_authorized", 0),
-            new OrderEvent("e2", "o1", 2, "payment_authorized", 0),
-            new OrderEvent("e4", "o1", 4, "order_cancelled", 0),
-            new OrderEvent("e3", "o1", 3, "payment_authorized", 0),
-            new OrderEvent("e5", "o1", 5, "payment_authorized", 0)
-        };
         for (OrderEvent event : stream) {
             replay.apply(event);
         }
         for (OrderEvent event : stream) {
             replay.apply(event);
         }
-        assertEquals(order, replay.orders().get("o1"), "replay is idempotent");
+        assertEquals(expected, replay.orders().get(orderId), label + " fresh replay");
     }
 
     private static void assertTrue(boolean condition, String label) {
@@ -46,7 +62,7 @@ public class TestRunner {
     }
 
     private static void assertEquals(Object expected, Object actual, String label) {
-        if (!expected.equals(actual)) {
+        if (expected == null ? actual != null : !expected.equals(actual)) {
             throw new AssertionError(label + ": expected " + expected + " but got " + actual);
         }
     }

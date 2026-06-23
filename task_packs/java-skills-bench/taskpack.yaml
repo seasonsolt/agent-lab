@@ -32,8 +32,9 @@ tasks:
       Fix OrderEventConsumer.apply(OrderEvent) for an at-least-once event
       stream. Duplicate event IDs must be ignored, stale lower versions must not
       overwrite newer state, payment before creation must not create an order,
-      and cancellation must remain terminal. Keep the implementation in memory
-      and do not add dependencies.
+      and cancellation must remain terminal without later invalid events
+      changing status, amount, or version. Keep the implementation in memory and
+      do not add dependencies.
     fixture: tasks/architecture/ddia-idempotent-consumer/fixture
     expected: tasks/architecture/ddia-idempotent-consumer/expected
     scorer: scorers/java_assertions.py
