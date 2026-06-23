@@ -124,6 +124,7 @@ class EvalReport(BaseModel):
     auto_score: float
     value_score: float
     scores: list[ScoreRecord]
+    workflow_nodes: list[WorkflowNodeRecord] = Field(default_factory=list)
     trace_ids: list[str]
     verdict: Verdict
     error: str | None = None

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .schemas import EvalReport, ScoreRecord, Verdict
+from .schemas import EvalReport, ScoreRecord, Verdict, WorkflowNodeRecord
 
 
 VALUE_SCORE_TYPES = ("rubric", "llm_judge", "human")
@@ -46,6 +46,11 @@ def build_report_from_records(
     scores: list[dict[str, Any]],
 ) -> EvalReport:
     score_records = [ScoreRecord.model_validate(score) for score in scores]
+    workflow_nodes = [
+        WorkflowNodeRecord.model_validate(node)
+        for score in scores
+        for node in score.get("details", {}).get("workflow_nodes", [])
+    ]
     auto_score = _normalized_average(score_records, "auto")
     value_score = _value_score(score_records)
     final_score = round(auto_score * 0.7 + value_score * 0.3, 2)
@@ -77,6 +82,7 @@ def build_report_from_records(
         auto_score=auto_score,
         value_score=value_score,
         scores=score_records,
+        workflow_nodes=workflow_nodes,
         trace_ids=eval_run.get("langfuse_trace_ids", []),
         verdict=_verdict(eval_run["status"], auto_score, value_score),
         error=eval_run.get("error"),

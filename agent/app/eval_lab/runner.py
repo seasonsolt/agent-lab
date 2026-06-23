@@ -11,8 +11,10 @@ from .hashing import hash_directory
 from .manifests import load_skill_manifest, load_task_pack_manifest
 from .paths import ensure_child_path
 from .repository import EvalRepository
-from .sandbox import DockerSandbox
+from .sandbox import DockerSandbox, SandboxRunResult
 from .scorer import run_scorer
+from .workflow_runner import WorkflowRunner, WorkflowRunResult
+from .workflows import load_workflow_manifest
 
 
 class EvalRunner:
@@ -20,10 +22,12 @@ class EvalRunner:
         self,
         repo: EvalRepository | None = None,
         sandbox: DockerSandbox | None = None,
+        workflow_runner: WorkflowRunner | None = None,
         runs_root: Path | None = None,
     ) -> None:
         self.repo = repo or EvalRepository()
         self.sandbox = sandbox or DockerSandbox()
+        self.workflow_runner = workflow_runner or WorkflowRunner(sandbox=self.sandbox)
         self.runs_root = Path(runs_root or Settings.eval_lab_host_runs_dir)
 
     def run(
@@ -76,17 +80,46 @@ class EvalRunner:
                 scorer_path = task_pack_dir / task.scorer
                 shutil.copytree(fixture_dir, workspace_dir)
 
-                result = self.sandbox.run_task(
-                    run_id=run_id,
-                    task_id=task.id,
-                    task_prompt=task.prompt,
-                    skill_host_dir=skill_dir,
-                    fixture_host_dir=fixture_dir,
-                    workspace_host_dir=workspace_dir,
-                    network_enabled=network_enabled,
-                    timeout_seconds=timeout_seconds,
-                )
-                trace_ids.extend(result.trace_ids)
+                workflow_result: WorkflowRunResult | None = None
+                if task.workflow:
+                    workflow_manifest = load_workflow_manifest(task_pack_dir / task.workflow)
+                    workflow_result = self.workflow_runner.run(
+                        manifest=workflow_manifest,
+                        run_id=run_id,
+                        task_id=task.id,
+                        task_prompt=task.prompt,
+                        skill_host_dir=skill_dir,
+                        fixture_host_dir=fixture_dir,
+                        workspace_host_dir=workspace_dir,
+                        network_enabled=network_enabled,
+                        timeout_seconds=timeout_seconds,
+                    )
+                    result = workflow_result.sandbox_result or SandboxRunResult(
+                        task_id=task.id,
+                        status=workflow_result.status,
+                        agent_output="Workflow completed without a coding-agent node.",
+                        changed_files=sorted(
+                            path.relative_to(workspace_dir).as_posix()
+                            for path in workspace_dir.rglob("*")
+                            if path.is_file()
+                        ),
+                        trace_ids=[],
+                    )
+                else:
+                    result = self.sandbox.run_task(
+                        run_id=run_id,
+                        task_id=task.id,
+                        task_prompt=task.prompt,
+                        skill_host_dir=skill_dir,
+                        fixture_host_dir=fixture_dir,
+                        workspace_host_dir=workspace_dir,
+                        network_enabled=network_enabled,
+                        timeout_seconds=timeout_seconds,
+                    )
+                if workflow_result is not None:
+                    trace_ids.extend(workflow_result.trace_ids)
+                else:
+                    trace_ids.extend(result.trace_ids)
 
                 output_path = workspace_dir / "agent_output.json"
                 output_path.write_text(
@@ -102,6 +135,10 @@ class EvalRunner:
                     timeout_seconds=timeout_seconds,
                 )
                 normalized_score = round(score.score / score.max_score * task.max_score, 6)
+                if workflow_result is not None:
+                    workflow_nodes = [node.model_dump() for node in workflow_result.nodes]
+                else:
+                    workflow_nodes = []
                 task_statuses.append(
                     self._task_status_from_score(
                         normalized_score=normalized_score,
@@ -122,6 +159,7 @@ class EvalRunner:
                         "sandbox_status": result.status,
                         "sandbox_changed_files": result.changed_files,
                         "sandbox_error": result.agent_output if result.status != "passed" else None,
+                        "workflow_nodes": workflow_nodes,
                     },
                 )
 

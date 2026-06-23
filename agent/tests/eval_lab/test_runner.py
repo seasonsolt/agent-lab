@@ -143,6 +143,54 @@ class FakeSandbox:
         )
 
 
+class FakeWorkflowRunner:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def run(
+        self,
+        manifest,
+        run_id: str,
+        task_id: str,
+        task_prompt: str,
+        skill_host_dir: Path,
+        fixture_host_dir: Path,
+        workspace_host_dir: Path,
+        network_enabled: bool,
+        timeout_seconds: int,
+    ):
+        self.calls.append(
+            {
+                "manifest_id": manifest.id,
+                "run_id": run_id,
+                "task_id": task_id,
+                "task_prompt": task_prompt,
+                "skill_host_dir": skill_host_dir,
+                "fixture_host_dir": fixture_host_dir,
+                "workspace_host_dir": workspace_host_dir,
+                "network_enabled": network_enabled,
+                "timeout_seconds": timeout_seconds,
+            }
+        )
+
+        from app.eval_lab.schemas import WorkflowNodeRecord
+        from app.eval_lab.workflow_runner import WorkflowRunResult
+
+        return WorkflowRunResult(
+            status="passed",
+            nodes=[
+                WorkflowNodeRecord(
+                    node_id="scan",
+                    node_type="tool",
+                    status="passed",
+                    duration_ms=1,
+                    artifact_paths=[".agent-lab/artifacts/scan.txt"],
+                )
+            ],
+            trace_ids=["trace-workflow"],
+        )
+
+
 def write_skill(skill_dir: Path) -> None:
     skill_dir.mkdir()
     (skill_dir / "SKILL.md").write_text("# Demo Skill\n", encoding="utf-8")
@@ -177,6 +225,51 @@ def write_task_pack(task_pack_dir: Path) -> None:
         "    expected: tasks/fix-1/expected\n"
         "    scorer: tasks/fix-1/scorer.py\n"
         "    max_score: 10\n",
+        encoding="utf-8",
+    )
+
+
+def write_workflow_task_pack(task_pack_dir: Path) -> None:
+    task_dir = task_pack_dir / "tasks" / "fix-1"
+    workflow_dir = task_pack_dir / "workflows"
+    fixture = task_dir / "fixture"
+    expected = task_dir / "expected"
+    fixture.mkdir(parents=True)
+    expected.mkdir()
+    workflow_dir.mkdir()
+    (fixture / "input.txt").write_text("before\n", encoding="utf-8")
+    (task_dir / "scorer.py").write_text(
+        "import json\n"
+        "print(json.dumps({'score': 1, 'max_score': 1, 'details': {'ok': True}}))\n",
+        encoding="utf-8",
+    )
+    (workflow_dir / "static-quality.yaml").write_text(
+        "id: static-quality\n"
+        "name: Static Quality\n"
+        "nodes:\n"
+        "  - id: scan\n"
+        "    type: tool\n"
+        "    needs: []\n"
+        "    timeout_seconds: 5\n"
+        "    on_failure: fail_workflow\n"
+        "    command: python -c \"print('scan')\"\n",
+        encoding="utf-8",
+    )
+    (task_pack_dir / "taskpack.yaml").write_text(
+        "id: workflow-pack\n"
+        "name: Workflow Pack\n"
+        "domain: java\n"
+        "tasks:\n"
+        "  - id: fix-1\n"
+        "    type: coding\n"
+        "    track: static-quality\n"
+        "    capability: resource-management\n"
+        "    workflow: workflows/static-quality.yaml\n"
+        "    prompt: Fix the file.\n"
+        "    fixture: tasks/fix-1/fixture\n"
+        "    expected: tasks/fix-1/expected\n"
+        "    scorer: tasks/fix-1/scorer.py\n"
+        "    max_score: 1\n",
         encoding="utf-8",
     )
 
@@ -251,6 +344,7 @@ def test_eval_runner_happy_path_uses_repo_sandbox_scorer_and_run_dir(tmp_path):
                 "sandbox_status": "passed",
                 "sandbox_changed_files": ["changed.txt"],
                 "sandbox_error": None,
+                "workflow_nodes": [],
             },
         }
     ]
@@ -364,3 +458,32 @@ def test_eval_runner_finish_status_is_conservative_for_empty_tasks(tmp_path):
     assert runner._finish_status([]) == "error"
     assert runner._task_status_from_score(6, 10, "passed") == "passed"
     assert runner._task_status_from_score(9, 10, "error") == "failed"
+
+
+def test_eval_runner_uses_workflow_runner_when_task_has_workflow(tmp_path):
+    skill_dir = tmp_path / "skill"
+    task_pack_dir = tmp_path / "pack"
+    runs_root = tmp_path / "runs"
+    write_skill(skill_dir)
+    write_workflow_task_pack(task_pack_dir)
+    repo = FakeRepository()
+    sandbox = FakeSandbox()
+    workflow_runner = FakeWorkflowRunner()
+
+    run = EvalRunner(
+        repo=repo,
+        sandbox=sandbox,
+        workflow_runner=workflow_runner,
+        runs_root=runs_root,
+    ).run(
+        skill_dir=skill_dir,
+        task_pack_dir=task_pack_dir,
+        network_enabled=False,
+        timeout_seconds=8,
+    )
+
+    assert run["status"] == "passed"
+    assert sandbox.calls == []
+    assert workflow_runner.calls[0]["manifest_id"] == "static-quality"
+    assert repo.finished == [{"run_id": "eval-1", "status": "passed", "trace_ids": ["trace-workflow"], "error": None}]
+    assert repo.scores[0]["details"]["workflow_nodes"][0]["node_id"] == "scan"
