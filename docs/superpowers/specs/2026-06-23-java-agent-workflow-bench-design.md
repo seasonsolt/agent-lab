@@ -41,6 +41,55 @@ This lets the lab answer stronger questions:
 - Does a security scanner plus AppSec skill produce safer patches than either
   one alone?
 
+## Market Differentiation
+
+Agent Lab should avoid building another general pull-request review product.
+CodeRabbit, GitHub Copilot code review, and Codex code review already cover
+that surface well:
+
+- CodeRabbit focuses on AI-powered pull-request review and integrates many
+  linters, security analyzers, and CI/CD tools into review feedback. Reference:
+  [CodeRabbit tools](https://docs.coderabbit.ai/tools).
+- GitHub Copilot code review reviews pull requests and suggests ready-to-apply
+  changes inside GitHub and supported developer surfaces. Reference:
+  [GitHub Copilot code review](https://docs.github.com/en/copilot/concepts/agents/code-review).
+- Codex code review reviews GitHub pull-request diffs, follows repository
+  guidance such as `AGENTS.md`, and posts focused GitHub review comments for
+  serious issues. Reference:
+  [Codex code review in GitHub](https://developers.openai.com/codex/integrations/github).
+
+Agent Lab should treat those products as review producers that can become
+workflow nodes. It should measure whether their outputs, combined with Java
+tools and knowledge sources, improve coding outcomes.
+
+The product boundary is:
+
+```text
+CodeRabbit / Copilot / Codex Review / Sonar / Semgrep / DDIA Skill / RAG / Wiki
+        -> workflow nodes
+        -> Agent Lab benchmark
+        -> evidence report
+        -> workflow trust decision
+```
+
+Differentiation principles:
+
+- Review products produce comments; Agent Lab produces reproducible evidence.
+- Review products optimize pull-request feedback; Agent Lab evaluates complete
+  workflows from scanner output to agent patch to scoring.
+- Review products can be broad; Agent Lab should go deep on Java risk domains.
+- Review products help teams move faster; Agent Lab tells teams which Java AI
+  review workflow deserves trust for a specific risk domain.
+- Review products are candidates in the benchmark; Agent Lab is the evaluator.
+
+The strongest positioning statement is:
+
+```text
+Agent Lab is a Java AI review workflow evidence lab. It benchmarks review
+agents, tools, skills, RAG, and expert workflows to decide which combinations
+improve static quality, architecture correctness, and AppSec outcomes.
+```
+
 ## Java Benchmark Tracks
 
 The Java bench should classify tasks by engineering risk domain, not by the
