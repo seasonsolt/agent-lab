@@ -106,8 +106,9 @@ class FakeRepository:
 
 
 class FakeSandbox:
-    def __init__(self, result_status: str = "passed") -> None:
+    def __init__(self, result_status: str = "passed", changed_files: list[str] | None = None) -> None:
         self.result_status = result_status
+        self.changed_files = ["changed.txt"] if changed_files is None else changed_files
         self.calls: list[dict[str, Any]] = []
 
     def run_task(
@@ -134,12 +135,13 @@ class FakeSandbox:
             }
         )
         workspace_host_dir.mkdir(parents=True, exist_ok=True)
-        (workspace_host_dir / "changed.txt").write_text("changed\n", encoding="utf-8")
+        if "changed.txt" in self.changed_files:
+            (workspace_host_dir / "changed.txt").write_text("changed\n", encoding="utf-8")
         return SandboxRunResult(
             task_id=task_id,
             status=self.result_status,
             agent_output="agent output",
-            changed_files=["changed.txt"],
+            changed_files=self.changed_files,
             trace_ids=["trace-1"],
         )
 
@@ -393,6 +395,31 @@ def test_eval_runner_maps_container_run_workspace_to_host_sandbox_path(tmp_path)
     assert repo.running_marks == [
         {"run_id": "eval-1", "sandbox_container_id": str(container_runs_root / "eval-1")}
     ]
+
+
+def test_eval_runner_falls_back_to_container_workspace_files_when_sandbox_changed_files_empty(tmp_path):
+    skill_dir = tmp_path / "skill"
+    task_pack_dir = tmp_path / "pack"
+    host_runs_root = tmp_path / "host-runs"
+    container_runs_root = tmp_path / "container-runs"
+    write_skill(skill_dir)
+    write_task_pack(task_pack_dir)
+    repo = FakeRepository()
+
+    run = EvalRunner(
+        repo=repo,
+        sandbox=FakeSandbox(changed_files=[]),
+        runs_root=container_runs_root,
+        host_runs_root=host_runs_root,
+    ).run(
+        skill_dir=skill_dir,
+        task_pack_dir=task_pack_dir,
+        network_enabled=True,
+        timeout_seconds=12,
+    )
+
+    assert run["status"] == "passed"
+    assert repo.scores[0]["details"]["sandbox_changed_files"] == ["input.txt"]
 
 
 def test_eval_runner_replaces_existing_run_dir(tmp_path):

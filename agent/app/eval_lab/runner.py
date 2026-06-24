@@ -124,6 +124,8 @@ class EvalRunner:
                         network_enabled=network_enabled,
                         timeout_seconds=timeout_seconds,
                     )
+                if not result.changed_files:
+                    result.changed_files = self._list_workspace_files(workspace_dir)
                 if workflow_result is not None:
                     trace_ids.extend(workflow_result.trace_ids)
                 else:
@@ -201,3 +203,10 @@ class EvalRunner:
         resolved_workspace = ensure_child_path(container_runs_root, workspace_dir)
         relative_workspace = resolved_workspace.relative_to(container_runs_root)
         return ensure_child_path(self.host_runs_root, self.host_runs_root / relative_workspace)
+
+    def _list_workspace_files(self, workspace_dir: Path) -> list[str]:
+        return sorted(
+            path.relative_to(workspace_dir).as_posix()
+            for path in workspace_dir.rglob("*")
+            if path.is_file()
+        )
