@@ -12,8 +12,8 @@ docker compose up --build -d
 Set the model API endpoint explicitly if your provider is not OpenAI:
 
 ```bash
-OPENAI_BASE_URL=http://<your_openai_compatible_host>/v1 \
-OPENAI_API_BASE=http://<your_openai_compatible_host>/v1 \
+OPENAI_BASE_URL=<your_openai_compatible_base_url>/v1 \
+OPENAI_API_BASE=<your_openai_compatible_base_url>/v1 \
 OPENAI_API_KEY=<your_key> \
 DEEP_AGENT_MODEL=openai:gpt-4o-mini \
 LANGFUSE_ENABLED=true \
