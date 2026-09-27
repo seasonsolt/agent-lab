@@ -1,0 +1,50 @@
+{
+  "baseline": {
+    "error_rate": 1.0,
+    "mean_auto_score": 100.0,
+    "mean_final_score": 70.0,
+    "mean_pass_rate": 1.0,
+    "run_ids": [
+      "eval-fdbc09b5060449be917f2b5b09240947"
+    ],
+    "status_counts": {
+      "failed": 1
+    },
+    "timeout_rate": 1.0
+  },
+  "baseline_skill": "example-coding-skill",
+  "evidence": {
+    "baseline_skill_path": "/Users/Thin/Source/git/seasonsolt/agent-lab/skills/example-coding-skill",
+    "evaluator": "seasonsolt/agent-lab",
+    "reproduction_command": "python3 -m skill_lab.cli compare --baseline ./skills/example-coding-skill --treatment-repo https://github.com/seasonsolt/edd-skill --treatment-skill-path .agents/skills/eval-driven-ai-tdd --task-pack ./task_packs/ddia-coding-real --api-url http://localhost:8000 --runs 1 --network --timeout-seconds 300 --output-dir ./evaluation-results/edd-skill-ddia-smoke",
+    "task_pack_path": "/Users/Thin/Source/git/seasonsolt/agent-lab/task_packs/ddia-coding-real",
+    "treatment_repo_commit": "fef3623d5a7d28732f4a007d9fbc4ebd1cdbb39f",
+    "treatment_repo_url": "https://github.com/seasonsolt/edd-skill",
+    "treatment_skill_path": ".agents/skills/eval-driven-ai-tdd"
+  },
+  "pass_rate_delta": 0.0,
+  "run_count": {
+    "baseline": 1,
+    "treatment": 1
+  },
+  "score_lift": {
+    "auto_score": 0.0,
+    "final_score": 0.0
+  },
+  "task_pack": "ddia-coding-real",
+  "treatment": {
+    "error_rate": 0.0,
+    "mean_auto_score": 100.0,
+    "mean_final_score": 70.0,
+    "mean_pass_rate": 1.0,
+    "run_ids": [
+      "eval-97e053930d704bc98eb6edeac34ec0d2"
+    ],
+    "status_counts": {
+      "passed": 1
+    },
+    "timeout_rate": 0.0
+  },
+  "treatment_skill": "eval-driven-ai-tdd",
+  "verdict": "inconclusive"
+}

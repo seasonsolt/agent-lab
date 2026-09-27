@@ -66,7 +66,7 @@ class WorkflowRunner:
                 )
                 return WorkflowRunResult(status="failed", nodes=records, trace_ids=trace_ids, sandbox_result=sandbox_result)
 
-            batch = ready[: manifest.max_parallel_nodes]
+            batch = _select_ready_batch(ready, manifest.max_parallel_nodes)
             for node in batch:
                 remaining.remove(node)
 
@@ -307,11 +307,8 @@ class WorkflowRunner:
         artifacts_dir: Path,
     ) -> WorkflowNodeRecord:
         sections = []
-        for dependency in node.needs:
-            upstream = node_by_id[dependency]
-            artifact = artifacts_dir / _artifact_name(upstream)
-            if artifact.exists():
-                sections.append(f"## {dependency}\n\n{artifact.read_text(encoding='utf-8')}")
+        for input_id, _artifact_name_value, artifact in self._input_artifacts(node, node_by_id, artifacts_dir):
+            sections.append(f"## {input_id}\n\n{artifact.read_text(encoding='utf-8')}")
         artifact_path = self._write_text_artifact(artifacts_dir, node, "\n\n".join(sections))
         return WorkflowNodeRecord(
             node_id=node.id,
@@ -331,14 +328,8 @@ class WorkflowRunner:
         prompt_parts = [task_prompt]
         if node.prompt:
             prompt_parts.append(node.prompt)
-        for dependency in node.needs:
-            upstream = node_by_id[dependency]
-            artifact_name = _artifact_name(upstream)
-            artifact = artifacts_dir / artifact_name
-            if artifact.exists():
-                prompt_parts.append(
-                    f"Workflow artifact from {dependency} ({artifact_name}):\n{artifact.read_text(encoding='utf-8')}"
-                )
+        for input_id, artifact_name, artifact in self._input_artifacts(node, node_by_id, artifacts_dir):
+            prompt_parts.append(f"Workflow artifact from {input_id} ({artifact_name}):\n{artifact.read_text(encoding='utf-8')}")
         return "\n\n".join(prompt_parts)
 
     def _write_text_artifact(self, artifacts_dir: Path, node: WorkflowNodeSpec, text: str) -> str:
@@ -346,6 +337,39 @@ class WorkflowRunner:
         path = artifacts_dir / artifact_name
         path.write_text(text, encoding="utf-8")
         return path.relative_to(artifacts_dir.parent.parent).as_posix()
+
+    def _input_artifacts(
+        self,
+        node: WorkflowNodeSpec,
+        node_by_id: dict[str, WorkflowNodeSpec],
+        artifacts_dir: Path,
+    ) -> list[tuple[str, str, Path]]:
+        artifacts = []
+        for input_id in node.inputs or node.needs:
+            if input_id not in node.needs:
+                raise ValueError(f"Workflow node '{node.id}' input '{input_id}' is not a declared dependency.")
+            upstream = node_by_id[input_id]
+            artifact_name = _artifact_name(upstream)
+            artifact = artifacts_dir / artifact_name
+            if not artifact.exists():
+                raise ValueError(f"Missing workflow artifact for node '{node.id}' input '{input_id}': {artifact_name}")
+            artifacts.append((input_id, artifact_name, artifact))
+        return artifacts
+
+
+def _select_ready_batch(ready: list[WorkflowNodeSpec], limit: int) -> list[WorkflowNodeSpec]:
+    batch = []
+    active_keys: set[str] = set()
+    for node in ready:
+        key = node.max_parallelism_key
+        if key and key in active_keys:
+            continue
+        batch.append(node)
+        if key:
+            active_keys.add(key)
+        if len(batch) >= limit:
+            break
+    return batch
 
 
 def _artifact_name(node: WorkflowNodeSpec) -> str:

@@ -432,3 +432,175 @@ def test_workflow_runner_limits_ready_batch_parallelism_with_deterministic_recor
     assert abs(sandbox.started[0][1] - sandbox.started[1][1]) < 0.15
     assert sandbox.max_observed_active > 1
     assert sandbox.max_observed_active <= 2
+
+
+def test_workflow_runner_limits_nodes_with_same_parallelism_key(tmp_path):
+    workspace = tmp_path / "workspace"
+    fixture = tmp_path / "fixture"
+    skill = tmp_path / "skill"
+    workspace.mkdir()
+    fixture.mkdir()
+    skill.mkdir()
+    sandbox = TimedSandbox()
+    manifest = WorkflowManifest(
+        id="parallel-key",
+        name="Parallel Key",
+        max_parallel_nodes=3,
+        nodes=[
+            WorkflowNodeSpec(
+                id="agent_a",
+                type="coding_agent",
+                needs=[],
+                timeout_seconds=30,
+                on_failure="fail_workflow",
+                max_parallelism_key="llm",
+                prompt="Fix A.",
+            ),
+            WorkflowNodeSpec(
+                id="agent_b",
+                type="coding_agent",
+                needs=[],
+                timeout_seconds=30,
+                on_failure="fail_workflow",
+                max_parallelism_key="llm",
+                prompt="Fix B.",
+            ),
+            WorkflowNodeSpec(
+                id="agent_c",
+                type="coding_agent",
+                needs=[],
+                timeout_seconds=30,
+                on_failure="fail_workflow",
+                max_parallelism_key="other",
+                prompt="Fix C.",
+            ),
+        ],
+    )
+
+    result = WorkflowRunner(sandbox=sandbox).run(
+        manifest=manifest,
+        run_id="eval-1",
+        task_id="case-1",
+        task_prompt="Fix it.",
+        skill_host_dir=skill,
+        fixture_host_dir=fixture,
+        workspace_host_dir=workspace,
+        network_enabled=False,
+        timeout_seconds=60,
+    )
+
+    assert result.status == "passed"
+    assert [node.node_id for node in result.nodes] == ["agent_a", "agent_c", "agent_b"]
+    assert len(sandbox.started) == 3
+    assert abs(sandbox.started[0][1] - sandbox.started[1][1]) < 0.15
+    assert sandbox.started[2][1] - sandbox.started[0][1] >= 0.15
+    assert sandbox.max_observed_active <= 2
+
+
+def test_workflow_runner_reads_only_declared_input_artifacts(tmp_path):
+    workspace = tmp_path / "workspace"
+    fixture = tmp_path / "fixture"
+    skill = tmp_path / "skill"
+    workspace.mkdir()
+    fixture.mkdir()
+    skill.mkdir()
+    sandbox = FakeSandbox()
+    manifest = WorkflowManifest(
+        id="declared-inputs",
+        name="Declared Inputs",
+        nodes=[
+            WorkflowNodeSpec(
+                id="scan_a",
+                type="tool",
+                needs=[],
+                timeout_seconds=5,
+                on_failure="fail_workflow",
+                command="python -c \"print('include me')\"",
+                outputs=["scan_a.txt"],
+            ),
+            WorkflowNodeSpec(
+                id="scan_b",
+                type="tool",
+                needs=[],
+                timeout_seconds=5,
+                on_failure="fail_workflow",
+                command="python -c \"print('do not include me')\"",
+                outputs=["scan_b.txt"],
+            ),
+            WorkflowNodeSpec(
+                id="agent_fix",
+                type="coding_agent",
+                needs=["scan_a", "scan_b"],
+                inputs=["scan_a"],
+                timeout_seconds=30,
+                on_failure="fail_workflow",
+                prompt="Use declared evidence only.",
+            ),
+        ],
+    )
+
+    result = WorkflowRunner(sandbox=sandbox).run(
+        manifest=manifest,
+        run_id="eval-1",
+        task_id="case-1",
+        task_prompt="Fix it.",
+        skill_host_dir=skill,
+        fixture_host_dir=fixture,
+        workspace_host_dir=workspace,
+        network_enabled=False,
+        timeout_seconds=60,
+    )
+
+    assert result.status == "passed"
+    prompt = sandbox.calls[0]["task_prompt"]
+    assert "include me" in prompt
+    assert "do not include me" not in prompt
+
+
+def test_workflow_runner_fails_consumer_when_declared_input_artifact_is_missing(tmp_path):
+    workspace = tmp_path / "workspace"
+    fixture = tmp_path / "fixture"
+    skill = tmp_path / "skill"
+    workspace.mkdir()
+    fixture.mkdir()
+    skill.mkdir()
+    manifest = WorkflowManifest(
+        id="missing-artifact",
+        name="Missing Artifact",
+        nodes=[
+            WorkflowNodeSpec(
+                id="agent_prepare",
+                type="coding_agent",
+                needs=[],
+                timeout_seconds=30,
+                on_failure="fail_workflow",
+                prompt="Prepare without writing an artifact.",
+            ),
+            WorkflowNodeSpec(
+                id="aggregate",
+                type="aggregate",
+                needs=["agent_prepare"],
+                inputs=["agent_prepare"],
+                timeout_seconds=5,
+                on_failure="fail_workflow",
+                outputs=["aggregate.md"],
+            ),
+        ],
+    )
+
+    result = WorkflowRunner(sandbox=FakeSandbox()).run(
+        manifest=manifest,
+        run_id="eval-1",
+        task_id="case-1",
+        task_prompt="Fix it.",
+        skill_host_dir=skill,
+        fixture_host_dir=fixture,
+        workspace_host_dir=workspace,
+        network_enabled=False,
+        timeout_seconds=60,
+    )
+
+    assert result.status == "failed"
+    assert [node.node_id for node in result.nodes] == ["agent_prepare", "aggregate"]
+    assert result.nodes[1].status == "failed"
+    assert "Missing workflow artifact" in result.nodes[1].error
